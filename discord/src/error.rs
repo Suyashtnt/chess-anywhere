@@ -4,7 +4,7 @@ use std::fmt::Display;
 use crate::Context;
 
 #[derive(Debug)]
-pub enum Arg {
+pub(crate) enum Arg {
     String(String, String),
     User(String, serenity::UserId),
     Int(String, i64),
@@ -17,7 +17,7 @@ pub enum Arg {
 }
 
 #[derive(Debug)]
-pub struct CommandError {
+pub(crate) struct CommandError {
     pub name: String,
     pub runner: serenity::UserId,
     pub guild: Option<serenity::GuildId>,
@@ -32,7 +32,7 @@ impl Display for CommandError {
 }
 
 impl CommandError {
-    pub fn from_ctx(ctx: &Context<'_>, args: Vec<Arg>) -> Self {
+    pub(crate) fn from_ctx(ctx: &Context<'_>, args: Vec<Arg>) -> Self {
         Self {
             name: ctx.command().name.clone(),
             runner: ctx.author().id,

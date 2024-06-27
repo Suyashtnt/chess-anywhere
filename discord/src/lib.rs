@@ -21,11 +21,12 @@ impl DiscordBotService {
     }
 }
 
-pub struct Data {
-    pub(crate) backend: Arc<BackendService>,
+#[derive(Debug)]
+pub(crate) struct Data {
+    pub backend: Arc<BackendService>,
 }
-pub type Error = Report<CommandError>;
-pub type Context<'a> = poise::Context<'a, Data, Error>;
+pub(crate) type Error = Report<CommandError>;
+pub(crate) type Context<'a> = poise::Context<'a, Data, Error>;
 
 #[poise::command(prefix_command, slash_command)]
 pub async fn register(ctx: Context<'_>) -> Result<(), CommandError> {
@@ -47,19 +48,11 @@ impl Service for DiscordBotService {
         let framework_backend = self.backend.clone();
         let framework = poise::Framework::builder()
             .options(poise::FrameworkOptions {
-                commands: vec![
-                    move_piece::r#move(),
-                    new_game::new_game(),
-                    new_game::new_external_game(),
-                ],
+                commands: vec![move_piece::r#move(), new_game::new_game(), register()],
                 ..Default::default()
             })
-            .setup(|ctx, _ready, framework| {
+            .setup(|_ctx, _ready, _framework| {
                 Box::pin(async move {
-                    poise::builtins::register_globally(ctx, &framework.options().commands)
-                        .await
-                        .unwrap();
-
                     Ok(Data {
                         backend: framework_backend,
                     })

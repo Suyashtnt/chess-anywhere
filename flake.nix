@@ -1,30 +1,48 @@
 {
-  description = "My flake with dream2nix packages";
-
   inputs = {
-    dream2nix.url = "github:nix-community/dream2nix";
-    nixpkgs.follows = "dream2nix/nixpkgs";
-  };
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
 
-  outputs = inputs @ {
-    self,
-    dream2nix,
-    nixpkgs,
-    ...
-  }: let
-    system = "x86_64-linux";
-  in {
-    packages.${system}.default = dream2nix.lib.evalModules {
-      packageSets.nixpkgs = inputs.dream2nix.inputs.nixpkgs.legacyPackages.${system};
-      modules = [
-        ./default.nix
-        {
-          paths.projectRoot = ./.;
-          # can be changed to ".git" or "flake.nix" to get rid of .project-root
-          paths.projectRootFile = "flake.nix";
-          paths.package = ./.;
-        }
-      ];
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+      };
     };
   };
+
+  outputs = {
+    self,
+    nixpkgs,
+    flake-utils,
+    rust-overlay,
+  }:
+    flake-utils.lib.eachDefaultSystem (system: let
+      pkgs = import nixpkgs {
+        inherit system;
+        overlays = [(import rust-overlay)];
+      };
+
+      rustTC = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+
+      packages = with pkgs; [
+        # binaries
+        rustTC
+        cargo-watch
+        cargo-binstall # just in case
+
+        # lsps
+        nil
+        marksman
+        alejandra
+      ];
+    in {
+      devShell = pkgs.mkShell {
+        buildInputs = packages;
+
+        PLAYWRIGHT_BROWSERS_PATH = pkgs.playwright-driver.browsers;
+        PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = true;
+        RUST_SRC_PATH = "${rustTC}/lib/rustlib/src/rust/library/";
+      };
+    });
 }

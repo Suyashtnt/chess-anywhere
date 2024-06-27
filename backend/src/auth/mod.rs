@@ -8,7 +8,10 @@ use uuid::Uuid;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum PlayerPlatform {
-    Discord(poise::serenity_prelude::UserId),
+    Discord {
+        user: poise::serenity_prelude::UserId,
+        game_message: poise::serenity_prelude::MessageId,
+    },
 }
 
 #[derive(Debug)]

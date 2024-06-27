@@ -9,3 +9,6 @@ version = "0.1.0"
 error-stack = { version = "0.4.1", features = ["spantrace", "serde"] }
 shakmaty = "0.27.0"
 poise = "0.6.1"
+
+[profile.dev.package.sqlx-macros]
+opt-level = 3

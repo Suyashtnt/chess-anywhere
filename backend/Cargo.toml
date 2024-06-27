@@ -7,7 +7,8 @@ version.workspace = true
 error-stack.workspace = true
 shakmaty.workspace = true
 poise.workspace = true
-sqlx = { version = "0.7", features = ["runtime-tokio", "tls-rustls"] }
-
-[profile.dev.package.sqlx-macros]
-opt-level = 3
+sqlx = { version = "0.7", features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "postgres",
+] }

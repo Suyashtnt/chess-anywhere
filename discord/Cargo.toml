@@ -1,3 +1,4 @@
 [package]
 name = "app"
+edition = "2021"
 version.workspace = true

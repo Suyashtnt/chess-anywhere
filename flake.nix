@@ -14,8 +14,6 @@
   }: let
     system = "x86_64-linux";
   in {
-    # All packages defined in ./packages/<name> are automatically added to the flake outputs
-    # e.g., 'packages/hello/default.nix' becomes '.#packages.hello'
     packages.${system}.default = dream2nix.lib.evalModules {
       packageSets.nixpkgs = inputs.dream2nix.inputs.nixpkgs.legacyPackages.${system};
       modules = [

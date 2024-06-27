@@ -1,0 +1,13 @@
+[package]
+name = "backend"
+edition = "2021"
+version.workspace = true
+
+[dependencies]
+error-stack.workspace = true
+shakmaty.workspace = true
+poise.workspace = true
+sqlx = { version = "0.7", features = ["runtime-tokio", "tls-rustls"] }
+
+[profile.dev.package.sqlx-macros]
+opt-level = 3

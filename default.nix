@@ -20,6 +20,6 @@
       ;
   };
 
-  name = "app";
+  name = "discord-chess-server";
   version = "0.1.0";
 }

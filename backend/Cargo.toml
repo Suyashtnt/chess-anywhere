@@ -8,6 +8,7 @@ error-stack.workspace = true
 shakmaty.workspace = true
 poise.workspace = true
 tokio.workspace = true
+tracing.workspace = true
 sqlx = { version = "0.7", features = [
     "runtime-tokio",
     "tls-rustls",

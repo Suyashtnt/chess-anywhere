@@ -3,7 +3,7 @@ use std::{error::Error, fmt};
 use arrayvec::ArrayVec;
 use error_stack::{ensure, Result, ResultExt};
 use replace_with::replace_with_or_abort_and_return;
-use shakmaty::{san::San, Chess, Position};
+use shakmaty::{san::San, Board, Chess, Position};
 
 use crate::auth::Player;
 
@@ -88,5 +88,10 @@ impl ChessGame {
             .into_iter()
             .map(|m| San::from_move(&self.board, &m))
             .collect()
+    }
+
+    /// Gets the current board
+    pub fn board(&self) -> &Board {
+        self.board.board()
     }
 }

@@ -1,7 +1,8 @@
-use auth::Player;
-use chess::ChessGame;
+use auth::{Player, PlayerPlatform};
+use chess::{ChessError, ChessGame};
 use dashmap::DashMap;
 use error_stack::{Result, ResultExt};
+use shakmaty::san::San;
 use std::{error::Error, fmt, future::Future, sync::Arc};
 
 pub mod auth;
@@ -27,7 +28,7 @@ pub trait Service {
     /// # Returns
     /// Returns OK(()) If it runs successfully and it was intended to end
     /// Else returns an error if it fails (and consequently takes down the whole app)
-    fn run(self) -> impl Future<Output = Result<(), ServiceError>> + Send + Sync;
+    fn run(self) -> impl Future<Output = Result<(), ServiceError>> + Send;
 }
 
 #[derive(Debug, Clone)]
@@ -36,22 +37,44 @@ pub struct BackendService {
     current_games: Arc<DashMap<(Player, Player), ChessGame>>,
 }
 
-// TODOS: create new game, handle moves and game over state
+pub enum CreateGameError {
+    PlayerInGame,
+    PlayerDoesNotExist,
+}
 
-impl Service for BackendService {
-    const SERVICE_NAME: &'static str = "Backend Scripts";
+impl BackendService {
+    pub async fn new(db_url: String) -> Result<Self, sqlx::Error> {
+        let pg_pool = sqlx::postgres::PgPool::connect(&db_url).await?;
+
+        Ok(Self {
+            pg_pool,
+            current_games: Arc::new(DashMap::new()),
+        })
+    }
+
+    pub fn create_game(
+        &self,
+        white: PlayerPlatform,
+        black: PlayerPlatform,
+    ) -> Result<(), CreateGameError> {
+        todo!()
+    }
+
+    pub fn play_move(&self, player: PlayerPlatform, san: San) -> Result<(), ChessError> {
+        todo!()
+    }
+
+    fn handle_game_over(&self, game: ChessGame) {
+        todo!()
+    }
 
     /// Initializes the database and fills up various caches
-    async fn run(self) -> Result<(), ServiceError> {
-        // get current tokio runtime
-        let runtime = tokio::runtime::Handle::current();
-
-        runtime.block_on(async {
-            sqlx::migrate!()
-                .run(&self.pg_pool)
-                .await
-                .change_context(ServiceError)
-        })?;
+    #[tracing::instrument]
+    pub async fn run(&self) -> Result<(), ServiceError> {
+        sqlx::migrate!()
+            .run(&self.pg_pool)
+            .await
+            .change_context(ServiceError)?;
 
         Ok(())
     }

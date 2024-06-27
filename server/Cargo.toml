@@ -4,3 +4,11 @@ edition = "2021"
 version.workspace = true
 
 [dependencies]
+tracing.workspace = true
+error-stack.workspace = true
+tokio.workspace = true
+backend = { path = "../backend" }
+discord = { path = "../discord" }
+dotenvy = "0.15.7"
+menv = "0.2.7"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }

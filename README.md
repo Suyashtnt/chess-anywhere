@@ -13,3 +13,4 @@ This is the most cursed project idea I've had in a while.
 - [ ] Minecraft (possibly interact with https://www.curseforge.com/minecraft/mc-mods/table-top-craft-fabric)
 - [ ] Slack (bot)
 - [ ] Web (chess.wobbl.in)
+- [ ] Lichess (bot; requires timers to be implemented first. This could also be used to get the players initial ELO if it's the first game they've played)

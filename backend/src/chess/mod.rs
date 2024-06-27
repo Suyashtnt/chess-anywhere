@@ -5,23 +5,9 @@ use error_stack::{ensure, Result, ResultExt};
 use replace_with::replace_with_or_abort_and_return;
 use shakmaty::{san::San, Chess, Position};
 
+use crate::auth::Player;
+
 pub type SanArray = ArrayVec<San, 256>;
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum PlayerPlatform {
-    Discord(poise::serenity_prelude::UserId),
-}
-
-impl From<poise::serenity_prelude::UserId> for PlayerPlatform {
-    fn from(user_id: poise::serenity_prelude::UserId) -> Self {
-        Self::Discord(user_id)
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Player {
-    platform: PlayerPlatform,
-}
 
 #[derive(Debug)]
 pub struct ChessGame {
@@ -35,6 +21,7 @@ pub struct ChessGame {
 pub enum ChessError {
     InvalidMove,
     NotYourTurn,
+    GameOver,
 }
 
 impl fmt::Display for ChessError {
@@ -42,6 +29,7 @@ impl fmt::Display for ChessError {
         match self {
             Self::InvalidMove => f.write_str("You played an invalid move!"),
             Self::NotYourTurn => f.write_str("It is not your turn!"),
+            Self::GameOver => f.write_str("The game is over!"),
         }
     }
 }
@@ -59,9 +47,15 @@ impl ChessGame {
 
     /// Plays a move for the given player
     ///
+    /// # Returns
+    /// Returns Ok(true) if the game is over
+    ///
     /// # Errors
     /// Errors if the move is invalid or it is not the player's turn
-    pub fn play_move(&mut self, player: &Player, san: San) -> Result<(), ChessError> {
+    pub fn play_move(&mut self, player: &Player, san: San) -> Result<bool, ChessError> {
+        // just in case we didn't remove the game yet for some reason
+        ensure!(!self.board.is_game_over(), ChessError::GameOver);
+
         let color_to_move = self.board.turn();
         let player_to_move = match color_to_move {
             shakmaty::Color::White => &self.white,
@@ -82,9 +76,9 @@ impl ChessGame {
             Err(err) => (false, err.into_inner()),
         });
 
-        ensure!(was_successful, ChessError::InvalidMove,);
+        ensure!(was_successful, ChessError::InvalidMove);
 
-        Ok(())
+        Ok(self.board.is_game_over())
     }
 
     /// Returns the SAN of the valid moves for the current player

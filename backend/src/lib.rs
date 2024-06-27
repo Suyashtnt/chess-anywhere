@@ -1,5 +1,8 @@
+use auth::Player;
+use chess::ChessGame;
+use dashmap::DashMap;
 use error_stack::{Result, ResultExt};
-use std::{error::Error, fmt, future::Future};
+use std::{error::Error, fmt, future::Future, sync::Arc};
 
 pub mod auth;
 pub mod chess;
@@ -30,7 +33,10 @@ pub trait Service {
 #[derive(Debug, Clone)]
 pub struct BackendService {
     pg_pool: sqlx::postgres::PgPool,
+    current_games: Arc<DashMap<(Player, Player), ChessGame>>,
 }
+
+// TODOS: create new game, handle moves and game over state
 
 impl Service for BackendService {
     const SERVICE_NAME: &'static str = "Backend Scripts";

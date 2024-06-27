@@ -12,6 +12,10 @@ sqlx = { version = "0.7", features = [
     "runtime-tokio",
     "tls-rustls",
     "postgres",
+    "uuid",
 ] }
 replace_with = "0.1.7"
 arrayvec = { version = "0.7.4", features = ["serde"] }
+dashmap = "6.0.1"
+uuid = { version = "1.9.1", features = ["v4"] }
+skillratings = "0.27.0"

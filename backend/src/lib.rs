@@ -5,7 +5,7 @@ pub mod auth;
 pub mod chess;
 
 #[derive(Debug)]
-struct ServiceError;
+pub struct ServiceError;
 
 impl fmt::Display for ServiceError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -37,10 +37,15 @@ impl Service for BackendService {
 
     /// Initializes the database and fills up various caches
     async fn run(self) -> Result<(), ServiceError> {
-        sqlx::migrate!()
-            .run(&self.pg_pool)
-            .await
-            .change_context(ServiceError)?;
+        // get current tokio runtime
+        let runtime = tokio::runtime::Handle::current();
+
+        runtime.block_on(async {
+            sqlx::migrate!()
+                .run(&self.pg_pool)
+                .await
+                .change_context(ServiceError)
+        })?;
 
         Ok(())
     }

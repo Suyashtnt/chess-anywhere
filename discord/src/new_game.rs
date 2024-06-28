@@ -4,11 +4,12 @@ use crate::{
     error::{Arg, CommandError},
     Context,
 };
-use error_stack::{Result, ResultExt};
+use backend::auth::PlayerPlatform;
+use error_stack::{FutureExt, Result, ResultExt};
 use poise::{
     serenity_prelude::{
         ButtonStyle, ComponentInteractionCollector, CreateActionRow, CreateButton, EditMessage,
-        Mentionable, User,
+        Mentionable, Message, User,
     },
     CreateReply,
 };
@@ -70,7 +71,7 @@ pub async fn discord(
             true => {
                 message
                     .edit(
-                        &ctx.http(),
+                        ctx.http(),
                         EditMessage::default()
                             .content(format!(
                                 "{} has accepted the challenge! The game will begin shortly.",
@@ -81,7 +82,7 @@ pub async fn discord(
                     .await
                     .change_context_lazy(error)?;
 
-                start_game_both_discord(ctx, other_user).await?;
+                start_game_both_discord(ctx, other_user, message).await?;
             }
             false => {
                 message
@@ -112,15 +113,33 @@ pub async fn discord(
     Ok(())
 }
 
-async fn start_game_both_discord(ctx: Context<'_>, other_user: User) -> Result<(), CommandError> {
+async fn start_game_both_discord(
+    ctx: Context<'_>,
+    other_user: User,
+    message: Message,
+) -> Result<(), CommandError> {
     let error = || {
         let error_user = other_user.clone();
         CommandError::from_ctx(&ctx, vec![Arg::User(error_user.name, error_user.id)])
     };
 
-    // TODOs: add game to backend and prepare listeners for moves
+    let white = PlayerPlatform::Discord {
+        user: ctx.author().id,
+        game_message: message.clone(),
+        context: ctx.serenity_context().clone(),
+    };
 
-    todo!();
+    let black = PlayerPlatform::Discord {
+        user: other_user.id,
+        game_message: message,
+        context: ctx.serenity_context().clone(),
+    };
+
+    ctx.data()
+        .backend
+        .create_game(white, black)
+        .change_context_lazy(error)
+        .await?;
 
     Ok(())
 }

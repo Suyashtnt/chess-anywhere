@@ -3,6 +3,7 @@ use std::fmt::Display;
 
 use crate::Context;
 
+// TODO: create serenity error handler that sends a message to the user + logs the error
 #[derive(Debug)]
 pub(crate) enum Arg {
     String(String, String),

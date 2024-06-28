@@ -1,18 +1,32 @@
-use std::hash::Hash;
+use std::{fmt, hash::Hash};
 
+use error_stack::{FutureExt, Result};
+use poise::serenity_prelude::{CacheHttp, Context, EditMessage, Message, UserId};
+use shakmaty::Board;
 use skillratings::{
     glicko2::{glicko2, Glicko2Config, Glicko2Rating},
     Outcomes,
 };
 use uuid::Uuid;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub enum PlayerPlatform {
     Discord {
-        user: poise::serenity_prelude::UserId,
-        game_message: poise::serenity_prelude::MessageId,
+        user: UserId,
+        game_message: Message,
+        context: Context,
     },
 }
+
+impl PartialEq for PlayerPlatform {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Discord { user: a, .. }, Self::Discord { user: b, .. }) => a == b,
+        }
+    }
+}
+
+impl Eq for PlayerPlatform {}
 
 #[derive(Debug)]
 pub struct Player {
@@ -31,11 +45,25 @@ pub struct Player {
 }
 
 impl Player {
-    /// Gets a user from the database if they're in it
-    pub fn fetch(
+    /// Gets a user from the database based on their current platform
+    pub async fn fetch(
         platform: PlayerPlatform,
         pool: &sqlx::postgres::PgPool,
     ) -> Result<Option<Self>, sqlx::Error> {
+        todo!()
+    }
+
+    /// Gets a user from the database based on their current platform,
+    /// or creates them if they're not in the database
+    /// using the provided closure to create the user
+    pub async fn upsert<F>(
+        platform: PlayerPlatform,
+        pool: &sqlx::postgres::PgPool,
+        create_method: F,
+    ) -> Result<Self, sqlx::Error>
+    where
+        F: FnOnce() -> Self,
+    {
         todo!()
     }
 
@@ -72,16 +100,53 @@ impl Player {
     ) -> Result<(), sqlx::Error> {
         todo!()
     }
-}
 
-impl Player {
-    pub fn update_elo(&mut self, other: &mut Player, outcome: Outcomes) {
+    /// Updates the ELO of the current player and the other player.
+    ///
+    /// # Arguments
+    /// * `black` - The other player (black).
+    /// * `outcome` - The outcome of the game. This is from the perspective of the current player (white).
+    pub fn update_elo(&mut self, black: &mut Player, outcome: Outcomes) {
         let config = Glicko2Config::default();
-        let (new_self, new_other) = glicko2(&self.elo, &other.elo, &outcome, &config);
+        let (new_self, new_other) = glicko2(&self.elo, &black.elo, &outcome, &config);
         self.elo = new_self;
-        other.elo = new_other;
+        black.elo = new_other;
+    }
+
+    pub async fn update_board(&mut self, board: &Board) -> Result<(), UpdateBoardError> {
+        match &mut self.platform {
+            PlayerPlatform::Discord {
+                ref mut game_message,
+                context,
+                ..
+            } => {
+                game_message
+                    .edit(context.http(), EditMessage::default())
+                    .change_context(UpdateBoardError::DiscordError)
+                    .await
+            }
+        }
+    }
+
+    pub fn platform(&self) -> &PlayerPlatform {
+        &self.platform
     }
 }
+
+#[derive(Debug)]
+pub enum UpdateBoardError {
+    DiscordError,
+}
+
+impl fmt::Display for UpdateBoardError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::DiscordError => f.write_str("Failed to update the board on Discord"),
+        }
+    }
+}
+
+impl std::error::Error for UpdateBoardError {}
 
 impl Hash for Player {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {

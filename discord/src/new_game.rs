@@ -118,19 +118,17 @@ async fn start_game_both_discord(
     other_user: User,
     message: Message,
 ) -> Result<(), CommandError> {
-    let error = || {
-        let error_user = other_user.clone();
-        CommandError::from_ctx(&ctx, vec![Arg::User(error_user.name, error_user.id)])
-    };
+    let error_user = other_user.clone();
+    let error = || CommandError::from_ctx(&ctx, vec![Arg::User(error_user.name, error_user.id)]);
 
     let white = PlayerPlatform::Discord {
-        user: ctx.author().id,
+        user: ctx.author().clone(),
         game_message: message.clone(),
         context: ctx.serenity_context().clone(),
     };
 
     let black = PlayerPlatform::Discord {
-        user: other_user.id,
+        user: other_user,
         game_message: message,
         context: ctx.serenity_context().clone(),
     };

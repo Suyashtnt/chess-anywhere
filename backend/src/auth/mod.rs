@@ -1,18 +1,21 @@
 use std::{fmt, hash::Hash};
 
-use error_stack::{FutureExt, Result};
-use poise::serenity_prelude::{CacheHttp, Context, EditMessage, Message, UserId};
+use error_stack::{FutureExt, Report, Result};
+use poise::serenity_prelude::{
+    futures::TryFutureExt, CacheHttp, Context, EditMessage, Message, User,
+};
 use shakmaty::Board;
 use skillratings::{
     glicko2::{glicko2, Glicko2Config, Glicko2Rating},
     Outcomes,
 };
+use sqlx::types::BigDecimal;
 use uuid::Uuid;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum PlayerPlatform {
     Discord {
-        user: UserId,
+        user: User,
         game_message: Message,
         context: Context,
     },
@@ -50,21 +53,45 @@ impl Player {
         platform: PlayerPlatform,
         pool: &sqlx::postgres::PgPool,
     ) -> Result<Option<Self>, sqlx::Error> {
-        todo!()
+        match platform {
+            PlayerPlatform::Discord { ref user, .. } => {
+                let id = BigDecimal::from(user.id.get());
+                sqlx::query!(
+                    "
+                    SELECT id, username, discord_id, elo_rating, elo_deviation, elo_volatility from users
+                    WHERE discord_id = $1
+                    LIMIT 1
+                    ",
+                    id
+                )
+                .fetch_optional(pool)
+                .map_err(Report::from)
+                .map_ok(|row| row.map(|row| Self {
+                    id: row.id,
+                    username: row.username,
+                    platform,
+                    elo: Glicko2Rating {
+                        rating: row.elo_rating,
+                        deviation: row.elo_deviation,
+                        volatility: row.elo_volatility,
+                    }
+                }))
+                .await
+            }
+        }
     }
 
     /// Gets a user from the database based on their current platform,
     /// or creates them if they're not in the database
     /// using the provided closure to create the user
-    pub async fn upsert<F>(
+    pub async fn upsert(
         platform: PlayerPlatform,
         pool: &sqlx::postgres::PgPool,
-        create_method: F,
-    ) -> Result<Self, sqlx::Error>
-    where
-        F: FnOnce() -> Self,
-    {
-        todo!()
+    ) -> Result<Self, sqlx::Error> {
+        match Self::fetch(platform.clone(), pool).await? {
+            Some(user) => Ok(user),
+            None => Self::create(platform, pool).await,
+        }
     }
 
     /// Gets a user by their username
@@ -76,12 +103,47 @@ impl Player {
     }
 
     /// Creates a new user in the database
-    pub fn create(
-        username: String,
+    pub async fn create(
         platform: PlayerPlatform,
         pool: &sqlx::postgres::PgPool,
     ) -> Result<Self, sqlx::Error> {
-        todo!()
+        match platform {
+            PlayerPlatform::Discord { ref user, .. } => {
+                let id = BigDecimal::from(user.id.get());
+                let Glicko2Rating {
+                    rating,
+                    deviation,
+                    volatility,
+                } = Glicko2Rating::new();
+
+                let record = sqlx::query!(
+                    "
+                        INSERT INTO users (username, discord_id, elo_rating, elo_deviation, elo_volatility)
+                        VALUES ($1, $2, $3, $4, $5)
+                        RETURNING id, username
+                    ",
+                    user.name,
+                    id,
+                    rating,
+                    deviation,
+                    volatility
+                )
+                .fetch_one(pool)
+                .map_err(Report::from)
+                .await?;
+
+                Ok(Self {
+                    id: record.id,
+                    username: record.username,
+                    platform,
+                    elo: Glicko2Rating {
+                        rating,
+                        deviation,
+                        volatility,
+                    },
+                })
+            }
+        }
     }
 
     /// Deletes a user from the database

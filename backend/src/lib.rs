@@ -72,11 +72,11 @@ impl BackendService {
         white: PlayerPlatform,
         black: PlayerPlatform,
     ) -> Result<(), CreateGameError> {
-        let white = Player::upsert(white, &self.pg_pool, || todo!())
+        let white = Player::upsert(white, &self.pg_pool)
             .change_context(CreateGameError::DatabaseError)
             .await?;
 
-        let black = Player::upsert(black, &self.pg_pool, || todo!())
+        let black = Player::upsert(black, &self.pg_pool)
             .change_context(CreateGameError::DatabaseError)
             .await?;
 

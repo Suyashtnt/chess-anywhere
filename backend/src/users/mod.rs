@@ -2,11 +2,13 @@ mod board_drawing;
 
 use std::{fmt, hash::Hash};
 
+use board_drawing::BoardDrawer;
 use error_stack::{FutureExt, Report, Result};
 use poise::serenity_prelude::{
-    futures::TryFutureExt, CacheHttp, Context, EditMessage, Message, User,
+    futures::TryFutureExt, CacheHttp, Context, CreateEmbed, CreateEmbedFooter, EditMessage,
+    Message, User,
 };
-use shakmaty::Board;
+use shakmaty::{Board, Color, Move};
 use skillratings::{
     glicko2::{glicko2, Glicko2Config, Glicko2Rating},
     Outcomes,
@@ -177,7 +179,21 @@ impl Player {
         black.elo = new_other;
     }
 
-    pub async fn update_board(&mut self, board: &Board) -> Result<(), UpdateBoardError> {
+    pub async fn update_board(
+        &mut self,
+        board: &Board,
+        turn: Color,
+        move_status: Option<Move>,
+        other_player_name: &str,
+        is_our_turn: bool,
+    ) -> Result<(), UpdateBoardError> {
+        let board_drawer = BoardDrawer::new(board, turn, move_status);
+        let current_player = if is_our_turn {
+            &self.username
+        } else {
+            other_player_name
+        };
+
         match &mut self.platform {
             PlayerPlatform::Discord {
                 ref mut game_message,
@@ -185,7 +201,18 @@ impl Player {
                 ..
             } => {
                 game_message
-                    .edit(context.http(), EditMessage::default())
+                    .edit(
+                        context.http(),
+                        EditMessage::default().content("").embed(
+                            CreateEmbed::default()
+                                .title(format!("{} vs {}", self.username, other_player_name))
+                                .description(board_drawer.draw_discord())
+                                .field("Current player", current_player, true)
+                                .footer(CreateEmbedFooter::new(
+                                    "Run /move to make a move on Discord using SAN",
+                                )),
+                        ),
+                    )
                     .change_context(UpdateBoardError::DiscordError)
                     .await
             }
@@ -194,6 +221,14 @@ impl Player {
 
     pub fn platform(&self) -> &PlayerPlatform {
         &self.platform
+    }
+
+    pub fn username(&self) -> &str {
+        &self.username
+    }
+
+    pub fn id(&self) -> Uuid {
+        self.id
     }
 }
 

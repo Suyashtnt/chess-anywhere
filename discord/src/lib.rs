@@ -8,6 +8,7 @@ use backend::{BackendService, Service, ServiceError};
 use error::CommandError;
 use error_stack::{Report, Result, ResultExt};
 use poise::serenity_prelude as serenity;
+use tracing::error;
 
 #[derive(Debug)]
 pub struct DiscordBotService {
@@ -49,6 +50,16 @@ impl Service for DiscordBotService {
         let framework = poise::Framework::builder()
             .options(poise::FrameworkOptions {
                 commands: vec![move_piece::r#move(), new_game::new_game(), register()],
+                on_error: |error| {
+                    Box::pin(async move {
+                        match error {
+                            poise::FrameworkError::Command { error, .. } => {
+                                error!("{:?}", error);
+                            }
+                            other => poise::builtins::on_error(other).await.unwrap(),
+                        }
+                    })
+                },
                 ..Default::default()
             })
             .setup(|_ctx, _ready, _framework| {

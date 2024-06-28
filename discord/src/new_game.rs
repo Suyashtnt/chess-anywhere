@@ -4,8 +4,8 @@ use crate::{
     error::{Arg, CommandError},
     Context,
 };
-use backend::users::PlayerPlatform;
-use error_stack::{FutureExt, Result, ResultExt};
+use backend::{users::PlayerPlatform, CreateGameError};
+use error_stack::{Result, ResultExt};
 use poise::{
     serenity_prelude::{
         ButtonStyle, ComponentInteractionCollector, CreateActionRow, CreateButton, EditMessage,
@@ -13,7 +13,7 @@ use poise::{
     },
     CreateReply,
 };
-use tracing::info;
+use tracing::debug;
 
 #[poise::command(slash_command, subcommands("discord"), subcommand_required)]
 pub async fn new_game(_: Context<'_>) -> Result<(), CommandError> {
@@ -58,7 +58,7 @@ pub async fn discord(
         .await
         .change_context_lazy(error)?;
 
-    info!("Waiting for response from {}", other_user.name);
+    debug!("Waiting for response from {}", other_user.name);
 
     let response = ComponentInteractionCollector::new(ctx)
         .message_id(message.id)
@@ -116,7 +116,7 @@ pub async fn discord(
 async fn start_game_both_discord(
     ctx: Context<'_>,
     other_user: User,
-    message: Message,
+    mut message: Message,
 ) -> Result<(), CommandError> {
     let error_user = other_user.clone();
     let error = || CommandError::from_ctx(&ctx, vec![Arg::User(error_user.name, error_user.id)]);
@@ -129,15 +129,30 @@ async fn start_game_both_discord(
 
     let black = PlayerPlatform::Discord {
         user: other_user,
-        game_message: message,
+        game_message: message.clone(),
         context: ctx.serenity_context().clone(),
     };
 
-    ctx.data()
-        .backend
-        .create_game(white, black)
-        .change_context_lazy(error)
-        .await?;
+    let res = ctx.data().backend.create_game(white, black).await;
 
-    Ok(())
+    match res {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            let current_frame: &CreateGameError =
+                err.frames().next().unwrap().downcast_ref().unwrap();
+
+            match current_frame {
+                CreateGameError::PlayerInGame => message
+                    .edit(
+                        &ctx.http(),
+                        EditMessage::default()
+                            .content("You are already in a game!")
+                            .components(vec![]),
+                    )
+                    .await
+                    .change_context_lazy(error),
+                _ => return Err(err.change_context(error())),
+            }
+        }
+    }
 }

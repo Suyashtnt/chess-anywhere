@@ -1,8 +1,8 @@
 use chess::{ChessError, ChessGame};
 use dashmap::DashMap;
-use error_stack::{bail, FutureExt, Result, ResultExt};
+use error_stack::{bail, ensure, FutureExt, Result, ResultExt};
 use poise::serenity_prelude::futures::{future::OptionFuture, TryFutureExt};
-use shakmaty::san::San;
+use shakmaty::{san::San, Color, Move};
 use std::{error::Error, fmt, future::Future, sync::Arc};
 use users::{Player, PlayerPlatform, UpdateBoardError};
 
@@ -86,12 +86,30 @@ impl BackendService {
             bail!(CreateGameError::PlayerInGame);
         }
 
+        for entry in self.current_games.iter() {
+            let (white, black) = entry.key();
+
+            ensure!(
+                white.id() != user_tuple.0.id()
+                    || black.id() != user_tuple.0.id()
+                    || white.id() != user_tuple.1.id()
+                    || black.id() != user_tuple.1.id(),
+                CreateGameError::PlayerInGame
+            );
+        }
+
         let game = ChessGame::new();
         let board = game.board();
 
-        Self::update_board(&mut user_tuple.0, &mut user_tuple.1, board)
-            .change_context(CreateGameError::DatabaseError)
-            .await?;
+        Self::update_board(
+            &mut user_tuple.0,
+            &mut user_tuple.1,
+            Color::White,
+            None,
+            board,
+        )
+        .change_context(CreateGameError::DatabaseError)
+        .await?;
 
         self.current_games.insert(user_tuple, game);
 
@@ -101,6 +119,8 @@ impl BackendService {
     async fn update_board(
         white: &mut Player,
         black: &mut Player,
+        current_player: Color,
+        last_move: Option<Move>,
         board: &shakmaty::Board,
     ) -> Result<(), UpdateBoardError> {
         match (white.platform(), black.platform()) {
@@ -115,11 +135,36 @@ impl BackendService {
                 },
             ) if white_msg.id == black_msg.id => {
                 // just update the board for the white player, and black will automatically get updated since it's the same message
-                white.update_board(board).await
+                white
+                    .update_board(
+                        board,
+                        current_player,
+                        last_move,
+                        black.username(),
+                        current_player == Color::White,
+                    )
+                    .await
             }
             _ => {
-                white.update_board(board).await?;
-                black.update_board(board).await
+                white
+                    .update_board(
+                        board,
+                        current_player,
+                        last_move.clone(),
+                        black.username(),
+                        current_player == Color::White,
+                    )
+                    .await?;
+
+                black
+                    .update_board(
+                        board,
+                        current_player,
+                        last_move,
+                        white.username(),
+                        current_player == Color::Black,
+                    )
+                    .await
             }
         }
     }
@@ -129,6 +174,7 @@ impl BackendService {
     }
 
     fn handle_game_over(&self, game: ChessGame) {
+        // notes: if the 2 users are the same person, don't do ELO calcs
         todo!()
     }
 

@@ -1,3 +1,5 @@
+mod board_drawing;
+
 use std::{fmt, hash::Hash};
 
 use error_stack::{FutureExt, Report, Result};

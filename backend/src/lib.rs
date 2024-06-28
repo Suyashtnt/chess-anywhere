@@ -1,13 +1,13 @@
-use auth::{Player, PlayerPlatform, UpdateBoardError};
 use chess::{ChessError, ChessGame};
 use dashmap::DashMap;
 use error_stack::{bail, FutureExt, Result, ResultExt};
 use poise::serenity_prelude::futures::{future::OptionFuture, TryFutureExt};
 use shakmaty::san::San;
 use std::{error::Error, fmt, future::Future, sync::Arc};
+use users::{Player, PlayerPlatform, UpdateBoardError};
 
-pub mod auth;
 pub mod chess;
+pub mod users;
 
 #[derive(Debug)]
 pub struct ServiceError;

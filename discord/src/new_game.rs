@@ -4,7 +4,7 @@ use crate::{
     error::{Arg, CommandError},
     Context,
 };
-use backend::auth::PlayerPlatform;
+use backend::users::PlayerPlatform;
 use error_stack::{FutureExt, Result, ResultExt};
 use poise::{
     serenity_prelude::{

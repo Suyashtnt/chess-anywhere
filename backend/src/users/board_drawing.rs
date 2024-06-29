@@ -1,16 +1,26 @@
+// TODO: move this to chess module
 use std::iter::once;
 
 use poise::serenity_prelude::EmojiId;
 use shakmaty::{Board, Color, File, Move, Piece, Rank, Role, Square};
 
+#[derive(Clone, PartialEq, Eq)]
+pub enum MoveStatus {
+    Move(Move),
+    Check,
+    Checkmate,
+    Stalemate,
+    GameStart,
+}
+
 pub struct BoardDrawer<'a> {
     board: &'a Board,
-    move_status: Option<Move>,
+    move_status: MoveStatus,
     turn: Color,
 }
 
 impl<'a> BoardDrawer<'a> {
-    pub fn new(board: &'a Board, turn: Color, move_status: Option<Move>) -> Self {
+    pub fn new(board: &'a Board, turn: Color, move_status: MoveStatus) -> Self {
         Self {
             board,
             move_status,
@@ -20,21 +30,25 @@ impl<'a> BoardDrawer<'a> {
 
     pub fn draw_discord(&self) -> String {
         let status_emoji = match self.move_status {
-            Some(Move::Castle { .. }) => EmojiId::new(981219896128073728),
-            Some(Move::EnPassant { .. }) => EmojiId::new(981219896153223198),
-            Some(Move::Normal { capture, .. }) if capture.is_some() => {
-                EmojiId::new(981223257984348170)
+            MoveStatus::Move(Move::Castle { .. }) => 981219896128073728,
+            MoveStatus::Move(Move::EnPassant { .. }) => 981219896153223198,
+            MoveStatus::Move(Move::Normal { capture, .. }) if capture.is_some() => {
+                981223257984348170
             }
-            Some(Move::Normal { promotion, .. }) if promotion.is_some() => {
-                EmojiId::new(981213862139420742)
+            MoveStatus::Move(Move::Normal { promotion, .. }) if promotion.is_some() => {
+                981213862139420742
             }
-            Some(Move::Normal { to, .. }) => {
+            MoveStatus::Move(Move::Normal { to, .. }) => {
                 let piece = self.board.piece_at(to);
-                Self::discord_emoji_for_square(to, piece)
+                Self::discord_emoji_for_square(to, piece).get()
             }
-            Some(_) => todo!(),
-            None => EmojiId::new(979399119644799026),
-        };
+            MoveStatus::Move(_) => todo!(),
+            MoveStatus::GameStart => 979399119644799026,
+            MoveStatus::Check => 981209797716238366,
+            MoveStatus::Checkmate => 981209797712035920,
+            MoveStatus::Stalemate => 979399119644799026,
+        }
+        .into();
 
         // there are 10 rows 10 cols, Each with an emoji
         // The first vec is cols, the inner vec is rows
@@ -146,7 +160,7 @@ impl<'a> BoardDrawer<'a> {
                     color: Color::White,
                     role: Role::Bishop,
                 }),
-            ) => 979396455162863676,
+            ) => 979396454944751656,
             (
                 true,
                 Some(Piece {

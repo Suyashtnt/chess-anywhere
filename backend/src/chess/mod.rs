@@ -3,7 +3,7 @@ use std::{error::Error, fmt};
 use arrayvec::ArrayVec;
 use error_stack::{ensure, Result, ResultExt};
 use replace_with::replace_with_or_abort_and_return;
-use shakmaty::{san::San, Board, Chess, Color, Outcome, Position};
+use shakmaty::{san::San, Board, Chess, Color, Move, Outcome, Position};
 
 pub type SanArray = ArrayVec<San, 256>;
 
@@ -42,15 +42,11 @@ impl ChessGame {
     /// Plays a move for the given player
     ///
     /// # Returns
-    /// Returns Ok(true) if the game is over
+    /// Returns Ok(chess_move) if the move was successful
     ///
     /// # Errors
     /// Errors if the move is invalid or it is not the player's turn
-    pub fn play_move(
-        &mut self,
-        player_color: &Color,
-        san: San,
-    ) -> Result<Option<Outcome>, ChessError> {
+    pub fn play_move(&mut self, player_color: &Color, san: San) -> Result<Move, ChessError> {
         // just in case we didn't remove the game yet for some reason
         ensure!(!self.0.is_game_over(), ChessError::GameOver);
 
@@ -73,7 +69,15 @@ impl ChessGame {
 
         ensure!(was_successful, ChessError::InvalidMove);
 
-        Ok(self.0.outcome())
+        Ok(chess_move)
+    }
+
+    pub fn outcome(&self) -> Option<Outcome> {
+        self.0.outcome()
+    }
+
+    pub fn is_check(&self) -> bool {
+        self.0.is_check()
     }
 
     /// Returns the SAN of the valid moves for the current player

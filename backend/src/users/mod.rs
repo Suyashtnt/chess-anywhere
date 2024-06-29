@@ -16,6 +16,8 @@ use skillratings::{
 use sqlx::{types::BigDecimal, PgPool};
 use uuid::Uuid;
 
+pub use board_drawing::MoveStatus;
+
 #[derive(Debug, Clone)]
 pub enum PlayerPlatform {
     Discord {
@@ -215,14 +217,16 @@ impl Player {
         Ok(())
     }
 
+    // TODO: move to discord crate
     pub async fn update_board(
         &mut self,
         board: &Board,
         turn: Color,
-        move_status: Option<Move>,
+        move_status: MoveStatus,
         other_player_name: &str,
         is_our_turn: bool,
     ) -> Result<(), UpdateBoardError> {
+        let checkmate = move_status == MoveStatus::Checkmate;
         let board_drawer = BoardDrawer::new(board, turn, move_status);
         let current_player = if is_our_turn {
             &self.username
@@ -236,18 +240,23 @@ impl Player {
                 context,
                 ..
             } => {
+                let mut embed = CreateEmbed::default()
+                    .title(format!("{} vs {}", self.username, other_player_name))
+                    .description(board_drawer.draw_discord())
+                    .footer(CreateEmbedFooter::new(
+                        "Run /move to make a move on Discord using SAN",
+                    ));
+
+                if checkmate {
+                    embed = embed.field("Winner", current_player, true);
+                } else {
+                    embed = embed.field("Current player", current_player, true);
+                }
+
                 game_message
                     .edit(
                         context.http(),
-                        EditMessage::default().content("").embed(
-                            CreateEmbed::default()
-                                .title(format!("{} vs {}", self.username, other_player_name))
-                                .description(board_drawer.draw_discord())
-                                .field("Current player", current_player, true)
-                                .footer(CreateEmbedFooter::new(
-                                    "Run /move to make a move on Discord using SAN",
-                                )),
-                        ),
+                        EditMessage::default().content("").embed(embed),
                     )
                     .change_context(UpdateBoardError::DiscordError)
                     .await

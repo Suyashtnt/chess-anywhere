@@ -13,7 +13,6 @@ use poise::{
     },
     CreateReply,
 };
-use tracing::debug;
 
 #[poise::command(slash_command, subcommands("discord"), subcommand_required)]
 pub async fn new_game(_: Context<'_>) -> Result<(), CommandError> {
@@ -30,6 +29,18 @@ pub async fn discord(
         let error_user = other_user.clone();
         CommandError::from_ctx(&ctx, vec![Arg::User(error_user.name, error_user.id)])
     };
+
+    if other_user.bot {
+        ctx.send(
+            CreateReply::default()
+                .ephemeral(true)
+                .content("You can't challenge a bot!"),
+        )
+        .await
+        .change_context_lazy(error)?;
+
+        return Ok(());
+    }
 
     let components = vec![CreateActionRow::Buttons(vec![
         CreateButton::new(format!("{}-accept", other_user.id))
@@ -58,9 +69,8 @@ pub async fn discord(
         .await
         .change_context_lazy(error)?;
 
-    debug!("Waiting for response from {}", other_user.name);
-
     let response = ComponentInteractionCollector::new(ctx)
+        .author_id(other_user.id)
         .message_id(message.id)
         .timeout(Duration::from_secs(60))
         .filter(move |mci| mci.data.custom_id.starts_with(&other_user.id.to_string()))

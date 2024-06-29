@@ -498,6 +498,8 @@ dependencies = [
  "backend",
  "error-stack",
  "poise",
+ "rand",
+ "shakmaty",
  "tokio",
  "tracing",
 ]

@@ -1,14 +1,14 @@
-use chess::{ChessError, ChessGame, SanArray};
+use chess::{ChessError, ChessGame, MoveStatus, SanArray};
 use dashmap::{mapref::multiple::RefMutMulti, DashMap};
 use error_stack::{bail, ensure, FutureExt, Result, ResultExt};
 use poise::serenity_prelude::UserId;
-use shakmaty::san::San;
-pub use shakmaty::{Color, Move, Outcome};
+use shakmaty::{san::San, Board, Color, Outcome};
 use skillratings::Outcomes;
-use std::{error::Error, fmt, future::Future, sync::Arc};
-use users::{MoveStatus, Player, PlayerPlatform, UpdateBoardError};
+use std::{error::Error, fmt, future::Future, mem::discriminant, sync::Arc};
+use users::{Player, PlayerPlatform, UpdateBoardError};
 
 pub mod chess;
+mod discord;
 pub mod users;
 
 #[derive(Debug)]
@@ -61,6 +61,15 @@ impl std::error::Error for CreateGameError {}
 
 type Game<'a> = RefMutMulti<'a, (Player, Player), ChessGame>;
 
+#[derive(Debug)]
+pub(crate) struct GameInfo<'a> {
+    pub white: &'a mut Player,
+    pub black: &'a mut Player,
+    pub last_move: &'a MoveStatus,
+    pub last_player: Color,
+    pub board: &'a Board,
+}
+
 impl BackendService {
     pub async fn new(db_url: String) -> Result<Self, sqlx::Error> {
         let pg_pool = sqlx::postgres::PgPool::connect(&db_url).await?;
@@ -103,74 +112,52 @@ impl BackendService {
         }
 
         let game = ChessGame::new();
-        let board = game.board();
 
-        Self::update_board(
-            &mut user_tuple.0,
-            &mut user_tuple.1,
-            Color::White,
-            MoveStatus::GameStart,
-            board,
-        )
-        .change_context(CreateGameError::DatabaseError)
-        .await?;
+        let mut game_info = GameInfo {
+            white: &mut user_tuple.0,
+            black: &mut user_tuple.1,
+            last_move: &MoveStatus::GameStart,
+            last_player: Color::White,
+            board: game.board(),
+        };
+
+        Self::update_board(&mut game_info)
+            .change_context(CreateGameError::DatabaseError)
+            .await?;
 
         self.current_games.insert(user_tuple, game);
 
         Ok(())
     }
 
-    async fn update_board(
-        white: &mut Player,
-        black: &mut Player,
-        current_player_color: Color,
-        move_status: MoveStatus,
-        board: &shakmaty::Board,
-    ) -> Result<(), UpdateBoardError> {
-        // TODO: move to discord crate
-        match (white.platform(), black.platform()) {
-            (
-                PlayerPlatform::Discord {
-                    game_message: white_msg,
-                    ..
-                },
-                PlayerPlatform::Discord {
-                    game_message: black_msg,
-                    ..
-                },
-            ) if white_msg.id == black_msg.id => {
-                // just update the board for the white player, and black will automatically get updated since it's the same message
-                white
-                    .update_board(
-                        board,
-                        current_player_color,
-                        move_status,
-                        black.username(),
-                        current_player_color == Color::White,
-                    )
-                    .await
-            }
-            _ => {
-                white
-                    .update_board(
-                        board,
-                        current_player_color,
-                        move_status.clone(),
-                        black.username(),
-                        current_player_color == Color::White,
-                    )
-                    .await?;
+    async fn update_board(info: &mut GameInfo<'_>) -> Result<(), UpdateBoardError> {
+        if discriminant(info.white.platform()) == discriminant(info.black.platform()) {
+            info.white
+                .update_board(
+                    &info.board,
+                    &info.last_move,
+                    info.black.username(),
+                    info.last_player == Color::White,
+                )
+                .await
+        } else {
+            info.white
+                .update_board(
+                    &info.board,
+                    &info.last_move,
+                    info.black.username(),
+                    info.last_player == Color::White,
+                )
+                .await?;
 
-                black
-                    .update_board(
-                        board,
-                        current_player_color,
-                        move_status,
-                        white.username(),
-                        current_player_color == Color::Black,
-                    )
-                    .await
-            }
+            info.black
+                .update_board(
+                    &info.board,
+                    &info.last_move,
+                    info.white.username(),
+                    info.last_player == Color::Black,
+                )
+                .await
         }
     }
 
@@ -187,7 +174,7 @@ impl BackendService {
         &self,
         player: PlayerPlatform,
         san: String,
-    ) -> Result<Option<Outcome>, ChessError> {
+    ) -> Result<MoveStatus, ChessError> {
         let san: San = san
             .parse::<San>()
             .attach_printable("Failed to parse SAN")
@@ -213,50 +200,51 @@ impl BackendService {
             MoveStatus::Move(chess_move)
         };
 
-        Self::update_board(
-            &mut white,
-            &mut black,
-            current_player_color,
-            move_status,
-            game.board(),
-        )
-        .await
-        .change_context(ChessError::DatabaseError)?;
+        let mut game_info = GameInfo {
+            white: &mut white,
+            black: &mut black,
+            last_move: &move_status,
+            last_player: current_player_color,
+            board: game.board(),
+        };
+
+        Self::update_board(&mut game_info)
+            .await
+            .change_context(ChessError::DatabaseError)?;
 
         if let Some(outcome) = game.outcome() {
             let key = game.key().to_owned();
             drop(game);
             self.handle_game_over(&key, outcome).await?;
-            Ok(Some(outcome))
-        } else {
-            Ok(None)
         }
+
+        Ok(move_status)
     }
 
     /// Gets the game for a specific player on discord
     pub async fn find_player_discord(&self, id: UserId) -> Option<PlayerPlatform> {
         self.current_games.iter().find_map(|entry| {
             let (white, black) = entry.key();
+            let white = white.platform();
+            let black = black.platform();
 
-            if let PlayerPlatform::Discord { user, .. } = white.platform() {
-                if user.id == id {
-                    return Some(white.platform().clone());
-                }
-            }
+            let player = match (white, black) {
+                (PlayerPlatform::Discord { user, .. }, _) if user.id == id => Some(white),
+                (_, PlayerPlatform::Discord { user, .. }) if user.id == id => Some(black),
+                _ => None,
+            }?;
 
-            if let PlayerPlatform::Discord { user, .. } = black.platform() {
-                if user.id == id {
-                    return Some(black.platform().clone());
-                }
-            }
-
-            None
+            Some(player.clone())
         })
     }
 
     /// Gets the valid moves for the given player
-    pub async fn get_moves(&self, player: PlayerPlatform) -> SanArray {
-        todo!()
+    pub async fn get_moves(&self, player: &PlayerPlatform) -> SanArray {
+        let Some(game) = self.get_game(player) else {
+            return SanArray::new();
+        };
+
+        game.valid_moves_san()
     }
 
     async fn handle_game_over<'a>(

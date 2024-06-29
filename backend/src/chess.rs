@@ -94,3 +94,12 @@ impl ChessGame {
         self.0.board()
     }
 }
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum MoveStatus {
+    Move(Move),
+    Check,
+    Checkmate,
+    Stalemate,
+    GameStart,
+}

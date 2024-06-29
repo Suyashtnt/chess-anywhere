@@ -19,11 +19,24 @@ pub async fn new_game(_: Context<'_>) -> Result<(), CommandError> {
     Ok(())
 }
 
+#[derive(Debug, poise::ChoiceParameter)]
+enum GameChoice {
+    #[name = "White"]
+    White,
+    #[name = "Black"]
+    Black,
+    #[name = "Random"]
+    Random,
+    #[name = "Other decides! (Not implemented yet)"]
+    TransferResponsibility,
+}
+
 #[poise::command(slash_command)]
 #[tracing::instrument]
 pub async fn discord(
     ctx: Context<'_>,
     #[description = "The user you want to play against"] other_user: User,
+    #[description = "Which side do you want to play?"] side: GameChoice,
 ) -> Result<(), CommandError> {
     let error = || {
         let error_user = other_user.clone();
@@ -92,7 +105,7 @@ pub async fn discord(
                     .await
                     .change_context_lazy(error)?;
 
-                start_game_both_discord(ctx, other_user, message).await?;
+                start_game_both_discord(ctx, other_user, side, message).await?;
             }
             false => {
                 message
@@ -126,21 +139,47 @@ pub async fn discord(
 async fn start_game_both_discord(
     ctx: Context<'_>,
     other_user: User,
+    side: GameChoice,
     mut message: Message,
 ) -> Result<(), CommandError> {
     let error_user = other_user.clone();
     let error = || CommandError::from_ctx(&ctx, vec![Arg::User(error_user.name, error_user.id)]);
 
-    let white = PlayerPlatform::Discord {
+    let author = PlayerPlatform::Discord {
         user: ctx.author().clone(),
         game_message: message.clone(),
         context: ctx.serenity_context().clone(),
     };
 
-    let black = PlayerPlatform::Discord {
+    let opponent = PlayerPlatform::Discord {
         user: other_user,
         game_message: message.clone(),
         context: ctx.serenity_context().clone(),
+    };
+
+    let (white, black) = match side {
+        GameChoice::White => (author, opponent),
+        GameChoice::Black => (opponent, author),
+        GameChoice::Random => {
+            if rand::random() {
+                (author, opponent)
+            } else {
+                (opponent, author)
+            }
+        }
+        GameChoice::TransferResponsibility => {
+            message
+                .edit(
+                    &ctx.http(),
+                    EditMessage::default()
+                        .content("Asking the other user to decide is not implemented yet!")
+                        .components(vec![]),
+                )
+                .await
+                .change_context_lazy(error)?;
+
+            return Ok(());
+        }
     };
 
     let res = ctx.data().backend.create_game(white, black).await;
@@ -149,7 +188,7 @@ async fn start_game_both_discord(
         Ok(()) => Ok(()),
         Err(err) => {
             let current_frame: &CreateGameError =
-                err.frames().next().unwrap().downcast_ref().unwrap();
+                err.frames().find_map(|frame| frame.downcast_ref()).unwrap();
 
             match current_frame {
                 CreateGameError::PlayerInGame => message

@@ -1,14 +1,10 @@
-mod board_drawing;
-
 use std::{fmt, hash::Hash};
 
-use board_drawing::BoardDrawer;
 use error_stack::{FutureExt, Report, Result};
 use poise::serenity_prelude::{
-    futures::TryFutureExt, CacheHttp, Context, CreateEmbed, CreateEmbedFooter, EditMessage,
-    Message, User,
+    futures::TryFutureExt, CacheHttp, Context, EditMessage, Message, User,
 };
-use shakmaty::{Board, Color, Move};
+use shakmaty::{Board, Color};
 use skillratings::{
     glicko2::{glicko2, Glicko2Config, Glicko2Rating},
     Outcomes,
@@ -16,7 +12,7 @@ use skillratings::{
 use sqlx::{types::BigDecimal, PgPool};
 use uuid::Uuid;
 
-pub use board_drawing::MoveStatus;
+use crate::{chess::MoveStatus, discord::create_board_embed};
 
 #[derive(Debug, Clone)]
 pub enum PlayerPlatform {
@@ -100,14 +96,6 @@ impl Player {
         }
     }
 
-    /// Gets a user by their username
-    pub fn fetch_by_username(
-        username: String,
-        pool: &sqlx::postgres::PgPool,
-    ) -> Result<Option<Self>, sqlx::Error> {
-        todo!()
-    }
-
     /// Creates a new user in the database
     pub async fn create(platform: PlayerPlatform, pool: &PgPool) -> Result<Self, sqlx::Error> {
         match platform {
@@ -150,8 +138,18 @@ impl Player {
     }
 
     /// Deletes a user from the database
-    pub fn delete(self, pool: &PgPool) -> Result<(), sqlx::Error> {
-        todo!()
+    pub async fn delete(self, pool: &PgPool) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            "
+            DELETE FROM users
+            WHERE id = $1
+            ",
+            self.id
+        )
+        .execute(pool)
+        .map_ok(|_| ())
+        .map_err(Report::from)
+        .await
     }
 
     /// Links (or updates) a user to a new platform
@@ -217,48 +215,26 @@ impl Player {
         Ok(())
     }
 
-    // TODO: move to discord crate
     pub async fn update_board(
         &mut self,
         board: &Board,
-        turn: Color,
-        move_status: MoveStatus,
+        move_status: &MoveStatus,
         other_player_name: &str,
         is_our_turn: bool,
     ) -> Result<(), UpdateBoardError> {
-        let checkmate = move_status == MoveStatus::Checkmate;
-        let board_drawer = BoardDrawer::new(board, turn, move_status);
-
         match &mut self.platform {
             PlayerPlatform::Discord {
                 ref mut game_message,
                 context,
                 ..
             } => {
-                let mut embed = CreateEmbed::default()
-                    .title(format!("{} vs {}", self.username, other_player_name))
-                    .description(board_drawer.draw_discord())
-                    .footer(CreateEmbedFooter::new(
-                        "Run /move to make a move on Discord using SAN",
-                    ));
-
-                if checkmate {
-                    let other_player = if is_our_turn {
-                        other_player_name
-                    } else {
-                        &self.username
-                    };
-
-                    embed = embed.field("Winner", other_player, true);
-                } else {
-                    let current_player = if is_our_turn {
-                        &self.username
-                    } else {
-                        other_player_name
-                    };
-
-                    embed = embed.field("Current player", current_player, true);
-                }
+                let embed = create_board_embed(
+                    &self.username,
+                    other_player_name,
+                    board,
+                    move_status,
+                    is_our_turn,
+                );
 
                 game_message
                     .edit(

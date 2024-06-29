@@ -2,7 +2,7 @@ use crate::{
     error::{Arg, CommandError},
     Context,
 };
-use backend::{chess::ChessError, Outcome};
+use backend::chess::ChessError;
 use error_stack::{Result, ResultExt};
 use poise::CreateReply;
 
@@ -44,33 +44,46 @@ pub async fn r#move(
         .await;
 
     match outcome {
-        Ok(Some(outcome)) => {
-            ctx.send(
-                CreateReply::default()
-                    .content(format!(
-                        "Game over! {}",
-                        match outcome {
-                            Outcome::Draw => "It's a draw!".to_string(),
-                            Outcome::Decisive { winner } =>
-                                format!("{} won against {}", winner, winner.other()),
-                        }
-                    ))
-                    .ephemeral(true),
-            )
-            .await
-            .change_context_lazy(error)?;
-        }
-        Ok(None) => {
-            ctx.send(
-                CreateReply::default()
-                    .content("Move played successfully!")
-                    .ephemeral(true),
-            )
-            .await
-            .change_context_lazy(error)?;
+        Ok(last_move) => {
+            match last_move {
+                backend::chess::MoveStatus::Move(chess_move) => {
+                    ctx.send(
+                        CreateReply::default()
+                            .content(format!("Move {} played successfully!", chess_move))
+                            .ephemeral(true),
+                    )
+                    .await
+                    .change_context_lazy(error)?;
+                }
+                backend::chess::MoveStatus::Check => {
+                    ctx.send(CreateReply::default().content("Checked!").ephemeral(true))
+                        .await
+                        .change_context_lazy(error)?;
+                }
+                backend::chess::MoveStatus::Checkmate => {
+                    ctx.send(
+                        CreateReply::default()
+                            .content("Game over! Checkmate!")
+                            .ephemeral(true),
+                    )
+                    .await
+                    .change_context_lazy(error)?;
+                }
+                backend::chess::MoveStatus::Stalemate => {
+                    ctx.send(
+                        CreateReply::default()
+                            .content("Game over! Stalemate!")
+                            .ephemeral(true),
+                    )
+                    .await
+                    .change_context_lazy(error)?;
+                }
+                backend::chess::MoveStatus::GameStart => unreachable!(),
+            };
         }
         Err(err) => {
-            let current_frame: &ChessError = err.frames().next().unwrap().downcast_ref().unwrap();
+            let current_frame: &ChessError =
+                err.frames().find_map(|frame| frame.downcast_ref()).unwrap();
 
             match current_frame {
                 ChessError::InvalidMove => {

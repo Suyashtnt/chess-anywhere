@@ -1,34 +1,21 @@
-// TODO: move this to chess module
 use std::iter::once;
 
 use poise::serenity_prelude::EmojiId;
 use shakmaty::{Board, Color, File, Move, Piece, Rank, Role, Square};
 
-#[derive(Clone, PartialEq, Eq)]
-pub enum MoveStatus {
-    Move(Move),
-    Check,
-    Checkmate,
-    Stalemate,
-    GameStart,
-}
+use crate::chess::MoveStatus;
 
 pub struct BoardDrawer<'a> {
     board: &'a Board,
-    move_status: MoveStatus,
-    turn: Color,
+    move_status: &'a MoveStatus,
 }
 
 impl<'a> BoardDrawer<'a> {
-    pub fn new(board: &'a Board, turn: Color, move_status: MoveStatus) -> Self {
-        Self {
-            board,
-            move_status,
-            turn,
-        }
+    pub fn new(board: &'a Board, move_status: &'a MoveStatus) -> Self {
+        Self { board, move_status }
     }
 
-    pub fn draw_discord(&self) -> String {
+    pub fn draw(&self) -> String {
         let status_emoji = match self.move_status {
             MoveStatus::Move(Move::Castle { .. }) => 981219896128073728,
             MoveStatus::Move(Move::EnPassant { .. }) => 981219896153223198,
@@ -39,10 +26,10 @@ impl<'a> BoardDrawer<'a> {
                 981213862139420742
             }
             MoveStatus::Move(Move::Normal { to, .. }) => {
-                let piece = self.board.piece_at(to);
-                Self::discord_emoji_for_square(to, piece).get()
+                let piece = self.board.piece_at(*to);
+                Self::emoji_for_square(*to, piece).get()
             }
-            MoveStatus::Move(_) => todo!(),
+            MoveStatus::Move(_) => unreachable!("No fairy chess pieces yet"),
             MoveStatus::GameStart => 979399119644799026,
             MoveStatus::Check => 981209797716238366,
             MoveStatus::Checkmate => 981209797712035920,
@@ -96,7 +83,7 @@ impl<'a> BoardDrawer<'a> {
                     .chain(Rank::ALL.into_iter().map(|rank| {
                         let square = Square::from_coords(file, rank);
                         let piece = self.board.piece_at(square);
-                        Self::discord_emoji_for_square(square, piece)
+                        Self::emoji_for_square(square, piece)
                     }))
                     .chain(once(get_file_emoji(&file)))
                     .collect(),
@@ -122,7 +109,7 @@ impl<'a> BoardDrawer<'a> {
             .join("\n")
     }
 
-    fn discord_emoji_for_square(square: Square, piece: Option<Piece>) -> EmojiId {
+    fn emoji_for_square(square: Square, piece: Option<Piece>) -> EmojiId {
         match (square.is_light(), piece) {
             (true, None) => 979399119644799026,
             (false, None) => 979399119397355520,

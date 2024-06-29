@@ -1,21 +1,39 @@
 use poise::{self, serenity_prelude as serenity};
-use std::fmt::Display;
+use std::fmt::{self, Display};
 
 use crate::Context;
 
-// TODO: create serenity error handler that sends a message to the user + logs the error
 #[derive(Debug)]
 pub(crate) enum Arg {
-    String(String, String),
-    User(String, serenity::UserId),
-    Int(String, i64),
-    Number(String, f64),
-    Boolean(String, bool),
-    Channel(String, serenity::ChannelId),
-    Role(String, serenity::RoleId),
-    Mentionable(String, serenity::Mention),
-    Attachment(String, serenity::Attachment),
+    String(String),
+    User(serenity::UserId),
+    Int(i64),
+    Number(f64),
+    Boolean(bool),
+    Channel(serenity::ChannelId),
+    Role(serenity::RoleId),
+    Mentionable(serenity::Mention),
+    Attachment(serenity::Attachment),
 }
+
+impl fmt::Display for Arg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Arg::String(s) => write!(f, "{}", s),
+            Arg::User(u) => write!(f, "{}", u),
+            Arg::Int(i) => write!(f, "{}", i),
+            Arg::Number(n) => write!(f, "{}", n),
+            Arg::Boolean(b) => write!(f, "{}", b),
+            Arg::Channel(c) => write!(f, "{}", c),
+            Arg::Role(r) => write!(f, "{}", r),
+            Arg::Mentionable(m) => write!(f, "{}", m),
+            Arg::Attachment(a) => write!(f, "{}", a.filename),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Argument(pub String, pub Arg);
 
 #[derive(Debug)]
 pub(crate) struct CommandError {
@@ -23,7 +41,6 @@ pub(crate) struct CommandError {
     pub runner: serenity::UserId,
     pub guild: Option<serenity::GuildId>,
     pub channel: serenity::ChannelId,
-    pub args: Vec<Arg>,
 }
 
 impl Display for CommandError {
@@ -33,13 +50,12 @@ impl Display for CommandError {
 }
 
 impl CommandError {
-    pub(crate) fn from_ctx(ctx: &Context<'_>, args: Vec<Arg>) -> Self {
+    pub(crate) fn from_ctx(ctx: &Context<'_>) -> Self {
         Self {
             name: ctx.command().name.clone(),
             runner: ctx.author().id,
             guild: ctx.guild_id(),
             channel: ctx.channel_id(),
-            args,
         }
     }
 }

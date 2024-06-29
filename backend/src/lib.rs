@@ -173,7 +173,7 @@ impl BackendService {
     pub async fn play_move(
         &self,
         player: PlayerPlatform,
-        san: String,
+        san: &str,
     ) -> Result<MoveStatus, ChessError> {
         let san: San = san
             .parse::<San>()

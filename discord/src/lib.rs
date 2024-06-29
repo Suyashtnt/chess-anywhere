@@ -5,9 +5,12 @@ mod new_game;
 use std::sync::Arc;
 
 use backend::{BackendService, Service, ServiceError};
-use error::CommandError;
+use error::{Argument, CommandError};
 use error_stack::{Report, Result, ResultExt};
-use poise::serenity_prelude as serenity;
+use poise::{
+    serenity_prelude::{self as serenity, CreateEmbed},
+    CreateReply,
+};
 use tracing::error;
 
 #[derive(Debug)]
@@ -34,7 +37,7 @@ pub async fn register(ctx: Context<'_>) -> Result<(), CommandError> {
     poise::builtins::register_application_commands_buttons(ctx)
         .await
         .attach_printable("Could not do registration")
-        .change_context(CommandError::from_ctx(&ctx, vec![]))?;
+        .change_context(CommandError::from_ctx(&ctx))?;
 
     Ok(())
 }
@@ -53,8 +56,24 @@ impl Service for DiscordBotService {
                 on_error: |error| {
                     Box::pin(async move {
                         match error {
-                            poise::FrameworkError::Command { error, .. } => {
-                                error!("{:?}", error);
+                            poise::FrameworkError::Command { error, ctx, .. } => {
+                                let mut error_embed = CreateEmbed::new()
+                                    .title("Error")
+                                    .description(error.to_string());
+
+                                error!("{} failed: {:?}", ctx.command().name, error);
+
+                                for argument in error.request_ref::<Argument>() {
+                                    error_embed = error_embed.field(
+                                        argument.0.clone(),
+                                        format!("{}", argument.1),
+                                        false,
+                                    );
+                                }
+
+                                ctx.send(CreateReply::default().embed(error_embed))
+                                    .await
+                                    .unwrap();
                             }
                             other => poise::builtins::on_error(other).await.unwrap(),
                         }

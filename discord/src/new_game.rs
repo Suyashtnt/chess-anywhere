@@ -1,11 +1,11 @@
 use std::time::Duration;
 
 use crate::{
-    error::{Arg, CommandError},
+    error::{Arg, Argument, CommandError},
     Context,
 };
 use backend::{users::PlayerPlatform, CreateGameError};
-use error_stack::{Result, ResultExt};
+use error_stack::{FutureExt, Result, ResultExt};
 use poise::{
     serenity_prelude::{
         ButtonStyle, ComponentInteractionCollector, CreateActionRow, CreateButton, EditMessage,
@@ -38,10 +38,10 @@ pub async fn discord(
     #[description = "The user you want to play against"] other_user: User,
     #[description = "Which side do you want to play?"] side: GameChoice,
 ) -> Result<(), CommandError> {
-    let error = || {
-        let error_user = other_user.clone();
-        CommandError::from_ctx(&ctx, vec![Arg::User(error_user.name, error_user.id)])
-    };
+    let error = || CommandError::from_ctx(&ctx);
+
+    let error_user = other_user.clone();
+    let error_user = move || Argument(error_user.name.clone(), Arg::User(error_user.id.clone()));
 
     if other_user.bot {
         ctx.send(
@@ -49,8 +49,9 @@ pub async fn discord(
                 .ephemeral(true)
                 .content("You can't challenge a bot!"),
         )
-        .await
-        .change_context_lazy(error)?;
+        .change_context_lazy(error)
+        .attach(error_user)
+        .await?;
 
         return Ok(());
     }
@@ -75,7 +76,8 @@ pub async fn discord(
                 .components(components),
         )
         .await
-        .change_context_lazy(error)?;
+        .change_context_lazy(error)
+        .attach_lazy(&error_user)?;
 
     let mut message = challenge_message
         .into_message()
@@ -102,8 +104,9 @@ pub async fn discord(
                             ))
                             .components(vec![]),
                     )
-                    .await
-                    .change_context_lazy(error)?;
+                    .change_context_lazy(error)
+                    .attach_lazy(error_user)
+                    .await?;
 
                 start_game_both_discord(ctx, other_user, side, message).await?;
             }
@@ -118,8 +121,9 @@ pub async fn discord(
                             ))
                             .components(vec![]),
                     )
-                    .await
-                    .change_context_lazy(error)?;
+                    .change_context_lazy(error)
+                    .attach_lazy(error_user)
+                    .await?
             }
         },
         None => {
@@ -128,8 +132,9 @@ pub async fn discord(
                     &ctx.http(),
                     format!("@silent {} took too long to respond", other_user.mention()),
                 )
-                .await
-                .change_context_lazy(error)?;
+                .change_context_lazy(error)
+                .change_context_lazy(error)
+                .await?;
         }
     };
 
@@ -143,7 +148,9 @@ async fn start_game_both_discord(
     mut message: Message,
 ) -> Result<(), CommandError> {
     let error_user = other_user.clone();
-    let error = || CommandError::from_ctx(&ctx, vec![Arg::User(error_user.name, error_user.id)]);
+    let error_user = move || Argument(error_user.name.clone(), Arg::User(error_user.id.clone()));
+
+    let error = || CommandError::from_ctx(&ctx);
 
     let author = PlayerPlatform::Discord {
         user: ctx.author().clone(),
@@ -191,15 +198,18 @@ async fn start_game_both_discord(
                 err.frames().find_map(|frame| frame.downcast_ref()).unwrap();
 
             match current_frame {
-                CreateGameError::PlayerInGame => message
-                    .edit(
-                        &ctx.http(),
-                        EditMessage::default()
-                            .content("You are already in a game!")
-                            .components(vec![]),
-                    )
-                    .await
-                    .change_context_lazy(error),
+                CreateGameError::PlayerInGame => {
+                    message
+                        .edit(
+                            &ctx.http(),
+                            EditMessage::default()
+                                .content("One of y'all are already in a game!")
+                                .components(vec![]),
+                        )
+                        .change_context_lazy(error)
+                        .attach(error_user)
+                        .await
+                }
                 _ => return Err(err.change_context(error())),
             }
         }

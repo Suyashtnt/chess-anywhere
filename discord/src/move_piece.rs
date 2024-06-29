@@ -1,9 +1,9 @@
 use crate::{
-    error::{Arg, CommandError},
+    error::{Arg, Argument, CommandError},
     Context,
 };
 use backend::chess::{ChessError, SanArrayString};
-use error_stack::{Result, ResultExt};
+use error_stack::{FutureExt, Result};
 use poise::CreateReply;
 
 #[poise::command(slash_command)]
@@ -14,13 +14,7 @@ pub async fn r#move(
     r#move: String,
 ) -> Result<(), CommandError> {
     let move_to_make = r#move;
-    let error_move = move_to_make.clone();
-    let error = || {
-        CommandError::from_ctx(
-            &ctx,
-            vec![Arg::String("move".to_string(), error_move.clone())],
-        )
-    };
+    let error = CommandError::from_ctx(&ctx);
 
     let Some(player_platform) = ctx
         .data()
@@ -33,8 +27,8 @@ pub async fn r#move(
                 .content("You are not in a game!")
                 .ephemeral(true),
         )
-        .await
-        .change_context_lazy(error)?;
+        .change_context(error)
+        .await?;
 
         return Ok(());
     };
@@ -42,7 +36,7 @@ pub async fn r#move(
     let outcome = ctx
         .data()
         .backend
-        .play_move(player_platform, move_to_make)
+        .play_move(player_platform, &move_to_make)
         .await;
 
     match outcome {
@@ -54,13 +48,13 @@ pub async fn r#move(
                             .content(format!("Move {} played successfully!", chess_move))
                             .ephemeral(true),
                     )
-                    .await
-                    .change_context_lazy(error)?;
+                    .change_context(error)
+                    .await?;
                 }
                 backend::chess::MoveStatus::Check => {
                     ctx.send(CreateReply::default().content("Checked!").ephemeral(true))
-                        .await
-                        .change_context_lazy(error)?;
+                        .change_context(error)
+                        .await?;
                 }
                 backend::chess::MoveStatus::Checkmate => {
                     ctx.send(
@@ -68,8 +62,8 @@ pub async fn r#move(
                             .content("Game over! Checkmate!")
                             .ephemeral(true),
                     )
-                    .await
-                    .change_context_lazy(error)?;
+                    .change_context(error)
+                    .await?;
                 }
                 backend::chess::MoveStatus::Stalemate => {
                     ctx.send(
@@ -77,8 +71,8 @@ pub async fn r#move(
                             .content("Game over! Stalemate!")
                             .ephemeral(true),
                     )
-                    .await
-                    .change_context_lazy(error)?;
+                    .change_context(error)
+                    .await?;
                 }
                 backend::chess::MoveStatus::GameStart => unreachable!(),
             };
@@ -94,8 +88,8 @@ pub async fn r#move(
                             .content("You played an invalid move!")
                             .ephemeral(true),
                     )
-                    .await
-                    .change_context_lazy(error)?;
+                    .change_context(error)
+                    .await?;
                 }
                 ChessError::NotYourTurn => {
                     ctx.send(
@@ -103,10 +97,14 @@ pub async fn r#move(
                             .content("It's not your turn!")
                             .ephemeral(true),
                     )
-                    .await
-                    .change_context_lazy(error)?;
+                    .change_context(error)
+                    .await?;
                 }
-                _ => return Err(err.change_context(error())),
+                _ => {
+                    return Err(err
+                        .change_context(error)
+                        .attach(Argument("move".to_string(), Arg::String(move_to_make))))
+                }
             }
         }
     }

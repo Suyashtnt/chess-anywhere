@@ -42,13 +42,18 @@ pub struct Argument(pub String, pub Arg);
 pub(crate) struct CommandError {
     pub name: String,
     pub runner: serenity::UserId,
-    pub guild: Option<serenity::GuildId>,
     pub channel: serenity::ChannelId,
 }
 
 impl Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Failed to run command {}!", self.name)
+        write!(
+            f,
+            "{} Failed to run command {} in {}!",
+            self.runner,
+            self.name,
+            self.channel.mention()
+        )
     }
 }
 
@@ -57,7 +62,6 @@ impl CommandError {
         Self {
             name: ctx.command().name.clone(),
             runner: ctx.author().id,
-            guild: ctx.guild_id(),
             channel: ctx.channel_id(),
         }
     }

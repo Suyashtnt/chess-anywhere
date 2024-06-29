@@ -1,8 +1,13 @@
-use chess::{ChessError, ChessGame};
-use dashmap::DashMap;
+use chess::{ChessError, ChessGame, SanArray};
+use dashmap::{mapref::multiple::RefMutMulti, DashMap};
 use error_stack::{bail, ensure, FutureExt, Result, ResultExt};
-use poise::serenity_prelude::futures::{future::OptionFuture, TryFutureExt};
-use shakmaty::{san::San, Color, Move};
+use poise::serenity_prelude::{
+    futures::{future::OptionFuture, TryFutureExt},
+    model::user,
+    UserId,
+};
+use shakmaty::{san::San, Color, Move, Outcome};
+use skillratings::Outcomes;
 use std::{error::Error, fmt, future::Future, sync::Arc};
 use users::{Player, PlayerPlatform, UpdateBoardError};
 
@@ -34,7 +39,7 @@ pub trait Service {
 
 #[derive(Debug, Clone)]
 pub struct BackendService {
-    pg_pool: sqlx::postgres::PgPool,
+    pool: sqlx::postgres::PgPool,
     current_games: Arc<DashMap<(Player, Player), ChessGame>>,
 }
 
@@ -57,12 +62,14 @@ impl fmt::Display for CreateGameError {
 
 impl std::error::Error for CreateGameError {}
 
+type Game<'a> = RefMutMulti<'a, (Player, Player), ChessGame>;
+
 impl BackendService {
     pub async fn new(db_url: String) -> Result<Self, sqlx::Error> {
         let pg_pool = sqlx::postgres::PgPool::connect(&db_url).await?;
 
         Ok(Self {
-            pg_pool,
+            pool: pg_pool,
             current_games: Arc::new(DashMap::new()),
         })
     }
@@ -72,11 +79,11 @@ impl BackendService {
         white: PlayerPlatform,
         black: PlayerPlatform,
     ) -> Result<(), CreateGameError> {
-        let white = Player::upsert(white, &self.pg_pool)
+        let white = Player::upsert(white, &self.pool)
             .change_context(CreateGameError::DatabaseError)
             .await?;
 
-        let black = Player::upsert(black, &self.pg_pool)
+        let black = Player::upsert(black, &self.pool)
             .change_context(CreateGameError::DatabaseError)
             .await?;
 
@@ -169,20 +176,107 @@ impl BackendService {
         }
     }
 
-    pub fn play_move(&self, player: PlayerPlatform, san: San) -> Result<(), ChessError> {
+    /// Plays a move for the given player
+    ///
+    /// # Returns
+    /// Returns Ok(true) if the game is over,
+    /// Ok(false) if the game is not over,
+    /// and Err(ChessError) if the move is invalid or it is not the player's turn
+    ///
+    /// Handling stopping the game for the players is up to the caller.
+    /// We automatically remove the running game and update ELOs
+    pub async fn play_move(
+        &mut self,
+        player: PlayerPlatform,
+        san: San,
+    ) -> Result<Option<Outcome>, ChessError> {
+        let Some(mut game) = self.get_game(&player) else {
+            bail!(ChessError::InvalidPlayer)
+        };
+
+        let current_player_color = Color::from_white(player == *game.key().0.platform());
+
+        if let Some(outcome) = game.play_move(&current_player_color, san)? {
+            let key = game.key().to_owned();
+            drop(game);
+            self.handle_game_over(&key, outcome).await?;
+            Ok(Some(outcome))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Gets the game for a specific player on discord
+    pub async fn find_player_discord(&self, id: UserId) -> Option<PlayerPlatform> {
+        self.current_games.iter().find_map(|entry| {
+            let (white, black) = entry.key();
+            if let PlayerPlatform::Discord { user, .. } = white.platform() {
+                if user.id == id {
+                    return Some(white.platform().clone());
+                }
+            }
+
+            if let PlayerPlatform::Discord { user, .. } = black.platform() {
+                if user.id == id {
+                    return Some(black.platform().clone());
+                }
+            }
+
+            None
+        })
+    }
+
+    /// Gets the valid moves for the given player
+    pub async fn get_moves(&self, player: PlayerPlatform) -> SanArray {
         todo!()
     }
 
-    fn handle_game_over(&self, game: ChessGame) {
-        // notes: if the 2 users are the same person, don't do ELO calcs
-        todo!()
+    async fn handle_game_over<'a>(
+        &'a mut self,
+        key: &(Player, Player),
+        outcome: Outcome,
+    ) -> Result<(), ChessError> {
+        // we know the game exists, so unwrap is safe
+        let ((mut white, mut black), _game) = self.current_games.remove(key).unwrap();
+        if white == black {
+            return Ok(());
+        }
+
+        let elo_outcome = match outcome {
+            Outcome::Draw => Outcomes::DRAW,
+            Outcome::Decisive {
+                winner: Color::White,
+            } => Outcomes::WIN,
+            Outcome::Decisive {
+                winner: Color::Black,
+            } => Outcomes::LOSS,
+        };
+
+        white
+            .update_elo(&mut black, elo_outcome, &self.pool)
+            .change_context(ChessError::DatabaseError)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Gets the game for a specific player on a specific platform
+    ///
+    /// # Returns
+    /// Returns None if the player is not in a game,
+    /// else returns white, black, and the game
+    fn get_game<'a>(&'a self, player: &PlayerPlatform) -> Option<Game<'a>> {
+        self.current_games.iter_mut().find(|entry| {
+            let (white, black) = entry.key();
+            white.platform() == player || black.platform() == player
+        })
     }
 
     /// Initializes the database and fills up various caches
     #[tracing::instrument]
     pub async fn run(&self) -> Result<(), ServiceError> {
         sqlx::migrate!()
-            .run(&self.pg_pool)
+            .run(&self.pool)
             .await
             .change_context(ServiceError)?;
 

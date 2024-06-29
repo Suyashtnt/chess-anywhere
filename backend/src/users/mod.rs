@@ -13,7 +13,7 @@ use skillratings::{
     glicko2::{glicko2, Glicko2Config, Glicko2Rating},
     Outcomes,
 };
-use sqlx::types::BigDecimal;
+use sqlx::{types::BigDecimal, PgPool};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -35,7 +35,7 @@ impl PartialEq for PlayerPlatform {
 
 impl Eq for PlayerPlatform {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Player {
     /// UUID of the player
     ///
@@ -107,10 +107,7 @@ impl Player {
     }
 
     /// Creates a new user in the database
-    pub async fn create(
-        platform: PlayerPlatform,
-        pool: &sqlx::postgres::PgPool,
-    ) -> Result<Self, sqlx::Error> {
+    pub async fn create(platform: PlayerPlatform, pool: &PgPool) -> Result<Self, sqlx::Error> {
         match platform {
             PlayerPlatform::Discord { ref user, .. } => {
                 let id = BigDecimal::from(user.id.get());
@@ -151,7 +148,7 @@ impl Player {
     }
 
     /// Deletes a user from the database
-    pub fn delete(self, pool: &sqlx::postgres::PgPool) -> Result<(), sqlx::Error> {
+    pub fn delete(self, pool: &PgPool) -> Result<(), sqlx::Error> {
         todo!()
     }
 
@@ -172,11 +169,50 @@ impl Player {
     /// # Arguments
     /// * `black` - The other player (black).
     /// * `outcome` - The outcome of the game. This is from the perspective of the current player (white).
-    pub fn update_elo(&mut self, black: &mut Player, outcome: Outcomes) {
+    pub async fn update_elo(
+        &mut self,
+        black: &mut Player,
+        outcome: Outcomes,
+        pool: &PgPool,
+    ) -> Result<(), sqlx::Error> {
         let config = Glicko2Config::default();
         let (new_self, new_other) = glicko2(&self.elo, &black.elo, &outcome, &config);
         self.elo = new_self;
         black.elo = new_other;
+
+        let mut transaction = pool.begin().await?;
+
+        sqlx::query!(
+            "
+            UPDATE users
+            SET elo_rating = $1, elo_deviation = $2, elo_volatility = $3
+            WHERE id = $4
+            ",
+            self.elo.rating,
+            self.elo.deviation,
+            self.elo.volatility,
+            self.id
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        sqlx::query!(
+            "
+            UPDATE users
+            SET elo_rating = $1, elo_deviation = $2, elo_volatility = $3
+            WHERE id = $4
+            ",
+            black.elo.rating,
+            black.elo.deviation,
+            black.elo.volatility,
+            black.id
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        transaction.commit().await?;
+
+        Ok(())
     }
 
     pub async fn update_board(

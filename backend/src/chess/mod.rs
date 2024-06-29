@@ -3,7 +3,7 @@ use std::{error::Error, fmt};
 use arrayvec::ArrayVec;
 use error_stack::{ensure, Result, ResultExt};
 use replace_with::replace_with_or_abort_and_return;
-use shakmaty::{san::San, Board, Chess, Color, Position};
+use shakmaty::{san::San, Board, Chess, Color, Outcome, Position};
 
 pub type SanArray = ArrayVec<San, 256>;
 
@@ -16,6 +16,8 @@ pub enum ChessError {
     InvalidMove,
     NotYourTurn,
     GameOver,
+    InvalidPlayer,
+    DatabaseError,
 }
 
 impl fmt::Display for ChessError {
@@ -24,6 +26,8 @@ impl fmt::Display for ChessError {
             Self::InvalidMove => f.write_str("You played an invalid move!"),
             Self::NotYourTurn => f.write_str("It is not your turn!"),
             Self::GameOver => f.write_str("The game is over!"),
+            Self::InvalidPlayer => f.write_str("Invalid player. You are probably not in the game!"),
+            Self::DatabaseError => f.write_str("Uh oh, something went wrong with the database! Please try again or report the error."),
         }
     }
 }
@@ -42,7 +46,11 @@ impl ChessGame {
     ///
     /// # Errors
     /// Errors if the move is invalid or it is not the player's turn
-    pub fn play_move(&mut self, player_color: &Color, san: San) -> Result<bool, ChessError> {
+    pub fn play_move(
+        &mut self,
+        player_color: &Color,
+        san: San,
+    ) -> Result<Option<Outcome>, ChessError> {
         // just in case we didn't remove the game yet for some reason
         ensure!(!self.0.is_game_over(), ChessError::GameOver);
 
@@ -65,7 +73,7 @@ impl ChessGame {
 
         ensure!(was_successful, ChessError::InvalidMove);
 
-        Ok(self.0.is_game_over())
+        Ok(self.0.outcome())
     }
 
     /// Returns the SAN of the valid moves for the current player

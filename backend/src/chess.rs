@@ -6,6 +6,7 @@ use replace_with::replace_with_or_abort_and_return;
 use shakmaty::{san::San, Board, Chess, Color, Move, Outcome, Position};
 
 pub type SanArray = ArrayVec<San, 256>;
+pub type SanArrayString = ArrayVec<String, 256>;
 
 #[derive(Debug)]
 /// Lightweight wrapper around the shakmaty Chess board

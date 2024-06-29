@@ -2,14 +2,16 @@ use crate::{
     error::{Arg, CommandError},
     Context,
 };
-use backend::chess::ChessError;
+use backend::chess::{ChessError, SanArrayString};
 use error_stack::{Result, ResultExt};
 use poise::CreateReply;
 
 #[poise::command(slash_command)]
 pub async fn r#move(
     ctx: Context<'_>,
-    #[description = "The move to make in SAN format"] r#move: String,
+    #[description = "The move to make in SAN format"]
+    #[autocomplete = "autocomplete_moves"]
+    r#move: String,
 ) -> Result<(), CommandError> {
     let move_to_make = r#move;
     let error_move = move_to_make.clone();
@@ -87,18 +89,46 @@ pub async fn r#move(
 
             match current_frame {
                 ChessError::InvalidMove => {
-                    ctx.say("You played an invalid move!")
-                        .await
-                        .change_context_lazy(error)?;
+                    ctx.send(
+                        CreateReply::default()
+                            .content("You played an invalid move!")
+                            .ephemeral(true),
+                    )
+                    .await
+                    .change_context_lazy(error)?;
                 }
                 ChessError::NotYourTurn => {
-                    ctx.say("It is not your turn!")
-                        .await
-                        .change_context_lazy(error)?;
+                    ctx.send(
+                        CreateReply::default()
+                            .content("It's not your turn!")
+                            .ephemeral(true),
+                    )
+                    .await
+                    .change_context_lazy(error)?;
                 }
                 _ => return Err(err.change_context(error())),
             }
         }
     }
     Ok(())
+}
+
+async fn autocomplete_moves<'a>(ctx: Context<'_>, partial: &'a str) -> SanArrayString {
+    let Some(player_platform) = ctx
+        .data()
+        .backend
+        .find_player_discord(ctx.author().id)
+        .await
+    else {
+        return SanArrayString::new_const();
+    };
+
+    ctx.data()
+        .backend
+        .get_moves(&player_platform)
+        .await
+        .into_iter()
+        .map(|san| san.to_string())
+        .filter(|san| san.starts_with(partial))
+        .collect()
 }

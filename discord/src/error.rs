@@ -1,4 +1,7 @@
-use poise::{self, serenity_prelude as serenity};
+use poise::{
+    self,
+    serenity_prelude::{self as serenity, Mentionable},
+};
 use std::fmt::{self, Display};
 
 use crate::Context;
@@ -20,13 +23,13 @@ impl fmt::Display for Arg {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Arg::String(s) => write!(f, "{}", s),
-            Arg::User(u) => write!(f, "{}", u),
+            Arg::User(u) => write!(f, "{}", u.mention()),
             Arg::Int(i) => write!(f, "{}", i),
             Arg::Number(n) => write!(f, "{}", n),
             Arg::Boolean(b) => write!(f, "{}", b),
-            Arg::Channel(c) => write!(f, "{}", c),
-            Arg::Role(r) => write!(f, "{}", r),
-            Arg::Mentionable(m) => write!(f, "{}", m),
+            Arg::Channel(c) => write!(f, "{}", c.mention()),
+            Arg::Role(r) => write!(f, "{}", r.mention()),
+            Arg::Mentionable(m) => write!(f, "{}", m.mention()),
             Arg::Attachment(a) => write!(f, "{}", a.filename),
         }
     }

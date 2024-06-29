@@ -1,5 +1,5 @@
 [package]
-name = "discord-chess-server"
+name = "chess-anywhere-server"
 edition = "2021"
 version.workspace = true
 

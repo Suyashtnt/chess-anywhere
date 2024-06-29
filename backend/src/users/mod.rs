@@ -228,11 +228,6 @@ impl Player {
     ) -> Result<(), UpdateBoardError> {
         let checkmate = move_status == MoveStatus::Checkmate;
         let board_drawer = BoardDrawer::new(board, turn, move_status);
-        let current_player = if is_our_turn {
-            &self.username
-        } else {
-            other_player_name
-        };
 
         match &mut self.platform {
             PlayerPlatform::Discord {
@@ -248,8 +243,20 @@ impl Player {
                     ));
 
                 if checkmate {
-                    embed = embed.field("Winner", current_player, true);
+                    let other_player = if is_our_turn {
+                        other_player_name
+                    } else {
+                        &self.username
+                    };
+
+                    embed = embed.field("Winner", other_player, true);
                 } else {
+                    let current_player = if is_our_turn {
+                        &self.username
+                    } else {
+                        other_player_name
+                    };
+
                     embed = embed.field("Current player", current_player, true);
                 }
 

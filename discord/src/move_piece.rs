@@ -61,9 +61,13 @@ pub async fn r#move(
             .change_context_lazy(error)?;
         }
         Ok(None) => {
-            ctx.reply("Move made successfully!")
-                .await
-                .change_context_lazy(error)?;
+            ctx.send(
+                CreateReply::default()
+                    .content("Move played successfully!")
+                    .ephemeral(true),
+            )
+            .await
+            .change_context_lazy(error)?;
         }
         Err(err) => {
             let current_frame: &ChessError = err.frames().next().unwrap().downcast_ref().unwrap();

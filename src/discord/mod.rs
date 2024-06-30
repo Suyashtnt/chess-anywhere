@@ -20,7 +20,7 @@ use poise::{
     CreateReply,
 };
 use tokio::task::JoinHandle;
-use tracing::error;
+use tracing::{error, info};
 
 pub struct DiscordBotService {
     http: Arc<serenity::http::Http>,
@@ -138,19 +138,21 @@ impl DiscordBotService {
             .change_context(CreateGameError::DiscordError)
             .await?;
 
-        let response = ComponentInteractionCollector::new(
-            &self
-                .shard_manager
-                .runners
-                .lock()
-                .await
-                .get(&ShardId(0))
-                .unwrap(),
-        )
-        .author_id(user_id)
-        .message_id(message.id)
-        .timeout(Duration::from_secs(60))
-        .await;
+        let shard_runner = self
+            .shard_manager
+            .runners
+            .lock()
+            .await
+            .get(&ShardId(0))
+            .unwrap()
+            .runner_tx
+            .clone();
+
+        let response = ComponentInteractionCollector::new(&shard_runner)
+            .author_id(user_id)
+            .message_id(message.id)
+            .timeout(Duration::from_secs(60))
+            .await;
 
         match response {
             Some(response) => match response.data.custom_id == "accept" {

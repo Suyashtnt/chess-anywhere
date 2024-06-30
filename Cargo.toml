@@ -1,5 +1,5 @@
 [package]
-name = "backend"
+name = "chess-anywhere"
 edition = "2021"
 version = "0.1.0"
 
@@ -27,6 +27,7 @@ dotenvy = "0.15.7"
 menv = "0.2.7"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 rand = "0.8.5"
+veil = "0.1.7"
 
 [profile.dev.package.sqlx-macros]
 opt-level = 3

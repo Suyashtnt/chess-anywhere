@@ -1,10 +1,10 @@
-use std::{fmt, hash::Hash, sync::Arc};
+use std::{fmt, hash::Hash};
 
 use error_stack::{FutureExt, Report, Result};
 use poise::serenity_prelude::{
-    futures::TryFutureExt, CacheHttp, Context, EditMessage, Message, User, UserId,
+    futures::TryFutureExt, CacheHttp, Context, EditMessage, Message, User,
 };
-use shakmaty::{Board, Color};
+use shakmaty::Board;
 use skillratings::{
     glicko2::{glicko2, Glicko2Config, Glicko2Rating},
     Outcomes,

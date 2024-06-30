@@ -12,6 +12,8 @@ use std::{
 };
 use users::{Player, PlayerPlatform, UpdateBoardError};
 
+use crate::DISCORD_BOT_SERVICE;
+
 pub mod chess;
 pub mod users;
 
@@ -46,6 +48,7 @@ pub enum CreateGameError {
     PlayerInGame,
     PlayerDoesNotExist,
     DatabaseError,
+    DiscordError,
 }
 
 impl fmt::Display for CreateGameError {
@@ -54,6 +57,7 @@ impl fmt::Display for CreateGameError {
             Self::PlayerInGame => f.write_str("One of the players is already in a game!"),
             Self::PlayerDoesNotExist => f.write_str("One of the players does not exist!"),
             Self::DatabaseError => f.write_str("Database error!"),
+            Self::DiscordError => f.write_str("Discord error!"),
         }
     }
 }

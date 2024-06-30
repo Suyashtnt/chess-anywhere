@@ -3,7 +3,7 @@ mod discord;
 
 use backend::BackendService;
 use discord::DiscordBotService;
-use error_stack::{bail, FutureExt, Result, ResultExt};
+use error_stack::{bail, Result, ResultExt};
 use std::fmt;
 use tokio::sync::OnceCell;
 use tracing::{error, info};
@@ -65,12 +65,14 @@ async fn main() -> Result<(), MainError> {
 
     // initialize services
 
-    BACKEND_SERVICE.set(
-        BackendService::new(env::database_url())
-            .await
-            .attach_printable("Failed to initialize backend service")
-            .change_context(MainError::ServiceError)?,
-    );
+    BACKEND_SERVICE
+        .set(
+            BackendService::new(env::database_url())
+                .await
+                .attach_printable("Failed to initialize backend service")
+                .change_context(MainError::ServiceError)?,
+        )
+        .unwrap();
 
     BACKEND_SERVICE
         .get()
@@ -80,19 +82,15 @@ async fn main() -> Result<(), MainError> {
         .attach_printable("Failed to run backend service")
         .change_context(MainError::ServiceError)?;
 
-    DISCORD_BOT_SERVICE.set(DiscordBotService::new(env::discord_token()));
-
-    let discord_bot_task = tokio::task::spawn(DISCORD_BOT_SERVICE.get().unwrap().run());
+    DISCORD_BOT_SERVICE
+        .set(
+            DiscordBotService::start(env::discord_token())
+                .await
+                .change_context(MainError::ServiceError)?,
+        )
+        .unwrap();
 
     info!("Services initialized successfully");
-
-    // wait for services to finish
-    discord_bot_task
-        .attach_printable("Failed to wait for discord bot service")
-        .change_context(MainError::ServiceError)
-        .await?
-        .attach_printable("Failed to run discord bot service")
-        .change_context(MainError::ServiceError)?;
 
     Ok(())
 }

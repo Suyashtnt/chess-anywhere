@@ -1,8 +1,8 @@
-use std::{fmt, hash::Hash};
+use std::{fmt, hash::Hash, sync::Arc};
 
 use error_stack::{FutureExt, Report, Result};
 use poise::serenity_prelude::{
-    futures::TryFutureExt, CacheHttp, Context, EditMessage, Message, User,
+    futures::TryFutureExt, CreateMessage, EditMessage, Http, Mentionable, Message, User,
 };
 use shakmaty::Board;
 use skillratings::{
@@ -19,7 +19,7 @@ pub enum PlayerPlatform {
     Discord {
         user: User,
         game_message: Message,
-        context: Context,
+        http: Arc<Http>,
     },
 }
 
@@ -225,8 +225,8 @@ impl Player {
         match &mut self.platform {
             PlayerPlatform::Discord {
                 ref mut game_message,
-                context,
-                ..
+                http,
+                user,
             } => {
                 let embed = create_board_embed(
                     &self.username,
@@ -236,11 +236,24 @@ impl Player {
                     is_our_turn,
                 );
 
+                // quick notif message
                 game_message
-                    .edit(
-                        context.http(),
-                        EditMessage::default().content("").embed(embed),
+                    .channel(&*http)
+                    .change_context(UpdateBoardError::DiscordError)
+                    .await?
+                    .id()
+                    .send_message(
+                        &*http,
+                        CreateMessage::new().content(format!("{}", user.mention())),
                     )
+                    .change_context(UpdateBoardError::DiscordError)
+                    .await?
+                    .delete(&*http)
+                    .change_context(UpdateBoardError::DiscordError)
+                    .await?;
+
+                game_message
+                    .edit(&*http, EditMessage::default().content("").embed(embed))
                     .change_context(UpdateBoardError::DiscordError)
                     .await
             }

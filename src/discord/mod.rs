@@ -4,7 +4,7 @@ mod move_piece;
 mod new_game;
 
 use core::fmt;
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use crate::{
     backend::{users::PlayerPlatform, CreateGameError, ServiceError},
@@ -13,13 +13,18 @@ use crate::{
 use error::{Argument, CommandError};
 use error_stack::{bail, FutureExt, Report, Result, ResultExt};
 use poise::{
-    serenity_prelude::{self as serenity, CreateEmbed, UserId},
+    serenity_prelude::{
+        self as serenity, ButtonStyle, ComponentInteractionCollector, CreateActionRow,
+        CreateButton, CreateEmbed, CreateMessage, EditMessage, Mentionable, ShardId, UserId,
+    },
     CreateReply,
 };
+use tokio::task::JoinHandle;
 use tracing::error;
 
 pub struct DiscordBotService {
     http: Arc<serenity::http::Http>,
+    shard_manager: Arc<serenity::ShardManager>,
 }
 
 impl fmt::Debug for DiscordBotService {
@@ -29,7 +34,9 @@ impl fmt::Debug for DiscordBotService {
 }
 
 impl DiscordBotService {
-    pub async fn start(token: String) -> Result<Self, ServiceError> {
+    pub async fn start(
+        token: String,
+    ) -> Result<(Self, JoinHandle<Result<(), ServiceError>>), ServiceError> {
         let intents = serenity::GatewayIntents::non_privileged();
 
         let framework = poise::Framework::builder()
@@ -72,10 +79,18 @@ impl DiscordBotService {
             .change_context(ServiceError)?;
 
         let http = client.http.clone();
+        let shard_manager = client.shard_manager.clone();
 
-        tokio::task::spawn(async move { client.start().change_context(ServiceError).await });
+        let future =
+            tokio::task::spawn(async move { client.start().change_context(ServiceError).await });
 
-        Ok(Self { http })
+        Ok((
+            Self {
+                http,
+                shard_manager,
+            },
+            future,
+        ))
     }
 
     /// Sends a challenge to the user in a DM
@@ -86,6 +101,7 @@ impl DiscordBotService {
     /// and Err(ChallengeError) if the challenge could not be sent
     pub async fn challenge_user_discord(
         &self,
+        your_username: &str,
         user_id: UserId,
     ) -> Result<Option<PlayerPlatform>, CreateGameError> {
         let backend = BACKEND_SERVICE.get().unwrap();
@@ -97,9 +113,98 @@ impl DiscordBotService {
         let channel = user_id
             .create_dm_channel(&self.http)
             .change_context(CreateGameError::DiscordError)
-            .await;
+            .await?;
 
-        todo!()
+        let components = vec![CreateActionRow::Buttons(vec![
+            CreateButton::new("accept")
+                .label("Accept")
+                .style(ButtonStyle::Primary),
+            CreateButton::new("decline")
+                .label("Decline")
+                .style(ButtonStyle::Danger),
+        ])];
+
+        let mut message = channel
+            .send_message(
+                &self.http,
+                CreateMessage::new()
+                    .content(format!(
+                        "{}, you have been challenged to a game of chess by {}! Do you accept?",
+                        user_id.mention(),
+                        your_username
+                    ))
+                    .components(components),
+            )
+            .change_context(CreateGameError::DiscordError)
+            .await?;
+
+        let response = ComponentInteractionCollector::new(
+            &self
+                .shard_manager
+                .runners
+                .lock()
+                .await
+                .get(&ShardId(0))
+                .unwrap(),
+        )
+        .author_id(user_id)
+        .message_id(message.id)
+        .timeout(Duration::from_secs(60))
+        .await;
+
+        match response {
+            Some(response) => match response.data.custom_id == "accept" {
+                true => {
+                    message
+                        .edit(
+                            &self.http,
+                            EditMessage::default()
+                                .content(
+                                    "You have accepted the challenge! The game will begin shortly.",
+                                )
+                                .components(vec![]),
+                        )
+                        .change_context(CreateGameError::DiscordError)
+                        .await?;
+
+                    Ok(Some(PlayerPlatform::Discord {
+                        user: user_id
+                            .to_user(&self.http)
+                            .change_context(CreateGameError::DiscordError)
+                            .await?,
+                        game_message: message,
+                        http: self.http.clone(),
+                    }))
+                }
+                false => {
+                    message
+                        .edit(
+                            &self.http,
+                            EditMessage::default()
+                                .content(format!("Declined! {} will be notified.", your_username))
+                                .components(vec![]),
+                        )
+                        .change_context(CreateGameError::DiscordError)
+                        .await?;
+
+                    Ok(None)
+                }
+            },
+            None => {
+                message
+                    .reply(
+                        &self.http,
+                        format!(
+                            "You took too long to respond. {} will be notified",
+                            your_username
+                        ),
+                    )
+                    .change_context(CreateGameError::DiscordError)
+                    .await?;
+
+                Ok(None)
+            }
+        }
     }
 }
 

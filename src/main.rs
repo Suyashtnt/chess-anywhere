@@ -82,15 +82,17 @@ async fn main() -> Result<(), MainError> {
         .attach_printable("Failed to run backend service")
         .change_context(MainError::ServiceError)?;
 
-    DISCORD_BOT_SERVICE
-        .set(
-            DiscordBotService::start(env::discord_token())
-                .await
-                .change_context(MainError::ServiceError)?,
-        )
-        .unwrap();
+    let (bot_service, task) = DiscordBotService::start(env::discord_token())
+        .await
+        .change_context(MainError::ServiceError)?;
+
+    DISCORD_BOT_SERVICE.set(bot_service).unwrap();
 
     info!("Services initialized successfully");
+
+    task.await
+        .change_context(MainError::ServiceError)?
+        .change_context(MainError::ServiceError)?;
 
     Ok(())
 }

@@ -6,13 +6,13 @@ use crate::{
         error::{Arg, Argument, CommandError},
         Context,
     },
-    BACKEND_SERVICE,
+    BACKEND_SERVICE, DISCORD_BOT_SERVICE,
 };
 use error_stack::{FutureExt, Result, ResultExt};
 use poise::{
     serenity_prelude::{
-        ButtonStyle, ComponentInteractionCollector, CreateActionRow, CreateButton, EditMessage,
-        Mentionable, Message, User,
+        ButtonStyle, ComponentInteractionCollector, CreateActionRow, CreateButton, CreateMessage,
+        EditMessage, Mentionable, Message, User,
     },
     CreateReply,
 };
@@ -64,10 +64,10 @@ pub async fn discord(
     }
 
     let components = vec![CreateActionRow::Buttons(vec![
-        CreateButton::new(format!("{}-accept", other_user.id))
+        CreateButton::new("accept")
             .label("Accept")
             .style(ButtonStyle::Primary),
-        CreateButton::new(format!("{}-decline", other_user.id))
+        CreateButton::new("decline")
             .label("Decline")
             .style(ButtonStyle::Danger),
     ])];
@@ -95,11 +95,10 @@ pub async fn discord(
         .author_id(other_user.id)
         .message_id(message.id)
         .timeout(Duration::from_secs(60))
-        .filter(move |mci| mci.data.custom_id.starts_with(&other_user.id.to_string()))
         .await;
 
     match response {
-        Some(response) => match response.data.custom_id.ends_with("accept") {
+        Some(response) => match response.data.custom_id == "accept" {
             true => {
                 message
                     .edit(
@@ -162,13 +161,13 @@ async fn start_game_both_discord(
     let author = PlayerPlatform::Discord {
         user: ctx.author().clone(),
         game_message: message.clone(),
-        context: ctx.serenity_context().clone(),
+        http: ctx.serenity_context().http.clone(),
     };
 
     let opponent = PlayerPlatform::Discord {
         user: other_user,
         game_message: message.clone(),
-        context: ctx.serenity_context().clone(),
+        http: ctx.serenity_context().http.clone(),
     };
 
     let (white, black) = match side {
@@ -226,11 +225,113 @@ async fn start_game_both_discord(
 
 #[poise::command(slash_command)]
 #[tracing::instrument]
-/// Challenge a user to a game of chess in a direct message
+/// Challenge a user to a private game
 pub async fn discord_dm(
     ctx: Context<'_>,
     #[description = "The user you want to play against"] other_user: User,
     #[description = "Which side do you want to play?"] side: GameChoice,
+    #[description = "Do you also want to play in a DM?"] play_in_dm: bool,
 ) -> Result<(), CommandError> {
-    todo!()
+    let error_user = other_user.clone();
+    let error_user = move || Argument(error_user.name.clone(), Arg::User(error_user.id.clone()));
+
+    let error = || CommandError::from_ctx(&ctx);
+
+    let mut message = if play_in_dm {
+        ctx.send(
+            CreateReply::default()
+                .content("Challenge sending! Check your DMs for further info")
+                .ephemeral(true),
+        )
+        .change_context_lazy(error)
+        .attach_lazy(&error_user)
+        .await?;
+
+        ctx.author()
+            .create_dm_channel(ctx.http())
+            .await
+            .change_context_lazy(error)
+            .attach_lazy(&error_user)?
+            .send_message(
+                &ctx.http(),
+                CreateMessage::default()
+                    .content("Waiting for the other user to accept the challenge..."),
+            )
+            .change_context_lazy(error)
+            .attach_lazy(&error_user)
+            .await?
+    } else {
+        ctx.send(
+            CreateReply::default().content("Waiting for the other user to accept the challenge..."),
+        )
+        .change_context_lazy(error)
+        .attach_lazy(&error_user)
+        .await?
+        .into_message()
+        .change_context_lazy(error)
+        .attach_lazy(&error_user)
+        .await?
+    };
+
+    let author = PlayerPlatform::Discord {
+        user: ctx.author().clone(),
+        game_message: message.clone(),
+        http: ctx.serenity_context().http.clone(),
+    };
+
+    let Some(opponent) = DISCORD_BOT_SERVICE
+        .get()
+        .unwrap()
+        .challenge_user_discord(&ctx.author().name, other_user.id)
+        .change_context_lazy(error)
+        .attach_lazy(&error_user)
+        .await?
+    else {
+        message
+            .edit(
+                ctx.http(),
+                EditMessage::default()
+                    .content("The other user declined the challenge. Better luck next time!"),
+            )
+            .change_context_lazy(error)
+            .attach_lazy(error_user)
+            .await?;
+
+        return Ok(());
+    };
+
+    let (white, black) = match side {
+        GameChoice::White => (author, opponent),
+        GameChoice::Black => (opponent, author),
+        GameChoice::Random => {
+            if rand::random() {
+                (author, opponent)
+            } else {
+                (opponent, author)
+            }
+        }
+        GameChoice::TransferResponsibility => {
+            message
+                .edit(
+                    &ctx.http(),
+                    EditMessage::default()
+                        .content("Asking the other user to decide is not implemented yet!")
+                        .components(vec![]),
+                )
+                .await
+                .change_context_lazy(error)?;
+
+            return Ok(());
+        }
+    };
+
+    let backend = BACKEND_SERVICE.get().unwrap();
+
+    backend
+        .create_game(white, black)
+        .change_context_lazy(error)
+        .attach_lazy(error_user)
+        .await?;
+
+    Ok(())
 }

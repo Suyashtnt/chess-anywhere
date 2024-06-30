@@ -12,8 +12,6 @@ use std::{
 };
 use users::{Player, PlayerPlatform, UpdateBoardError};
 
-use crate::DISCORD_BOT_SERVICE;
-
 pub mod chess;
 pub mod users;
 
@@ -136,34 +134,23 @@ impl BackendService {
     }
 
     async fn update_board(info: &mut GameInfo<'_>) -> Result<(), UpdateBoardError> {
-        if discriminant(info.white.platform()) == discriminant(info.black.platform()) {
-            info.white
-                .update_board(
-                    &info.board,
-                    &info.last_move,
-                    info.black.username(),
-                    info.last_player == Color::White,
-                )
-                .await
-        } else {
-            info.white
-                .update_board(
-                    &info.board,
-                    &info.last_move,
-                    info.black.username(),
-                    info.last_player == Color::White,
-                )
-                .await?;
+        info.black
+            .update_board(
+                &info.board,
+                &info.last_move,
+                info.white.username(),
+                info.last_player == Color::Black,
+            )
+            .await?;
 
-            info.black
-                .update_board(
-                    &info.board,
-                    &info.last_move,
-                    info.white.username(),
-                    info.last_player == Color::Black,
-                )
-                .await
-        }
+        info.white
+            .update_board(
+                &info.board,
+                &info.last_move,
+                info.black.username(),
+                info.last_player == Color::White,
+            )
+            .await
     }
 
     /// Plays a move for the given player

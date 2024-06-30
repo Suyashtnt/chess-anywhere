@@ -4,7 +4,7 @@ use poise::{
 };
 use std::fmt::{self, Display};
 
-use crate::Context;
+use crate::discord::Context;
 
 #[derive(Debug)]
 pub(crate) enum Arg {

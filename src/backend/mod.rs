@@ -4,12 +4,25 @@ use error_stack::{bail, ensure, FutureExt, Result, ResultExt};
 use poise::serenity_prelude::UserId;
 use shakmaty::{san::San, Board, Color, Outcome};
 use skillratings::Outcomes;
-use std::{error::Error, fmt, future::Future, mem::discriminant, sync::Arc};
+use std::{
+    error::Error,
+    fmt::{self, Debug},
+    mem::discriminant,
+    sync::Arc,
+};
 use users::{Player, PlayerPlatform, UpdateBoardError};
 
 pub mod chess;
-mod discord;
 pub mod users;
+
+#[derive(Debug)]
+pub struct ChallengeError;
+impl std::fmt::Display for ChallengeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Failed to send challenge")
+    }
+}
+impl std::error::Error for ChallengeError {}
 
 #[derive(Debug)]
 pub struct ServiceError;
@@ -21,18 +34,6 @@ impl fmt::Display for ServiceError {
 }
 
 impl Error for ServiceError {}
-
-pub trait Service {
-    /// The name of the service used in logs
-    const SERVICE_NAME: &'static str;
-
-    /// Run the service
-    ///
-    /// # Returns
-    /// Returns OK(()) If it runs successfully and it was intended to end
-    /// Else returns an error if it fails (and consequently takes down the whole app)
-    fn run(self) -> impl Future<Output = Result<(), ServiceError>> + Send;
-}
 
 #[derive(Debug, Clone)]
 pub struct BackendService {

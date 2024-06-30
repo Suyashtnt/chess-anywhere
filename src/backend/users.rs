@@ -1,8 +1,8 @@
-use std::{fmt, hash::Hash};
+use std::{fmt, hash::Hash, sync::Arc};
 
 use error_stack::{FutureExt, Report, Result};
 use poise::serenity_prelude::{
-    futures::TryFutureExt, CacheHttp, Context, EditMessage, Message, User,
+    futures::TryFutureExt, CacheHttp, Context, EditMessage, Message, User, UserId,
 };
 use shakmaty::{Board, Color};
 use skillratings::{
@@ -12,7 +12,7 @@ use skillratings::{
 use sqlx::{types::BigDecimal, PgPool};
 use uuid::Uuid;
 
-use crate::{chess::MoveStatus, discord::create_board_embed};
+use crate::{backend::chess::MoveStatus, discord::board::create_board_embed};
 
 #[derive(Debug, Clone)]
 pub enum PlayerPlatform {

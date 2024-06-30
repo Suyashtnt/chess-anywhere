@@ -1,8 +1,11 @@
 use crate::{
-    error::{Arg, Argument, CommandError},
-    Context,
+    backend::chess::{ChessError, MoveStatus, SanArrayString},
+    discord::{
+        error::{Arg, Argument, CommandError},
+        Context,
+    },
+    BACKEND_SERVICE,
 };
-use backend::chess::{ChessError, SanArrayString};
 use error_stack::{FutureExt, Result};
 use poise::CreateReply;
 
@@ -16,12 +19,8 @@ pub async fn r#move(
     let move_to_make = r#move;
     let error = CommandError::from_ctx(&ctx);
 
-    let Some(player_platform) = ctx
-        .data()
-        .backend
-        .find_player_discord(ctx.author().id)
-        .await
-    else {
+    let backend = BACKEND_SERVICE.get().unwrap();
+    let Some(player_platform) = backend.find_player_discord(ctx.author().id).await else {
         ctx.send(
             CreateReply::default()
                 .content("You are not in a game!")
@@ -33,16 +32,12 @@ pub async fn r#move(
         return Ok(());
     };
 
-    let outcome = ctx
-        .data()
-        .backend
-        .play_move(player_platform, &move_to_make)
-        .await;
+    let outcome = backend.play_move(player_platform, &move_to_make).await;
 
     match outcome {
         Ok(last_move) => {
             match last_move {
-                backend::chess::MoveStatus::Move(chess_move) => {
+                MoveStatus::Move(chess_move) => {
                     ctx.send(
                         CreateReply::default()
                             .content(format!("Move {} played successfully!", chess_move))
@@ -51,12 +46,12 @@ pub async fn r#move(
                     .change_context(error)
                     .await?;
                 }
-                backend::chess::MoveStatus::Check => {
+                MoveStatus::Check => {
                     ctx.send(CreateReply::default().content("Checked!").ephemeral(true))
                         .change_context(error)
                         .await?;
                 }
-                backend::chess::MoveStatus::Checkmate => {
+                MoveStatus::Checkmate => {
                     ctx.send(
                         CreateReply::default()
                             .content("Game over! Checkmate!")
@@ -65,7 +60,7 @@ pub async fn r#move(
                     .change_context(error)
                     .await?;
                 }
-                backend::chess::MoveStatus::Stalemate => {
+                MoveStatus::Stalemate => {
                     ctx.send(
                         CreateReply::default()
                             .content("Game over! Stalemate!")
@@ -74,7 +69,7 @@ pub async fn r#move(
                     .change_context(error)
                     .await?;
                 }
-                backend::chess::MoveStatus::GameStart => unreachable!(),
+                MoveStatus::GameStart => unreachable!(),
             };
         }
         Err(err) => {
@@ -112,17 +107,13 @@ pub async fn r#move(
 }
 
 async fn autocomplete_moves<'a>(ctx: Context<'_>, partial: &'a str) -> SanArrayString {
-    let Some(player_platform) = ctx
-        .data()
-        .backend
-        .find_player_discord(ctx.author().id)
-        .await
-    else {
+    let backend = BACKEND_SERVICE.get().unwrap();
+
+    let Some(player_platform) = backend.find_player_discord(ctx.author().id).await else {
         return SanArrayString::new_const();
     };
 
-    ctx.data()
-        .backend
+    backend
         .get_moves(&player_platform)
         .await
         .into_iter()

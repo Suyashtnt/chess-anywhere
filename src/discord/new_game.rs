@@ -1,10 +1,13 @@
 use std::time::Duration;
 
 use crate::{
-    error::{Arg, Argument, CommandError},
-    Context,
+    backend::{users::PlayerPlatform, CreateGameError},
+    discord::{
+        error::{Arg, Argument, CommandError},
+        Context,
+    },
+    BACKEND_SERVICE,
 };
-use backend::{users::PlayerPlatform, CreateGameError};
 use error_stack::{FutureExt, Result, ResultExt};
 use poise::{
     serenity_prelude::{
@@ -14,7 +17,11 @@ use poise::{
     CreateReply,
 };
 
-#[poise::command(slash_command, subcommands("discord"), subcommand_required)]
+#[poise::command(
+    slash_command,
+    subcommands("discord", "discord_dm"),
+    subcommand_required
+)]
 pub async fn new_game(_: Context<'_>) -> Result<(), CommandError> {
     Ok(())
 }
@@ -189,7 +196,8 @@ async fn start_game_both_discord(
         }
     };
 
-    let res = ctx.data().backend.create_game(white, black).await;
+    let backend = BACKEND_SERVICE.get().unwrap();
+    let res = backend.create_game(white, black).await;
 
     match res {
         Ok(()) => Ok(()),
@@ -214,4 +222,15 @@ async fn start_game_both_discord(
             }
         }
     }
+}
+
+#[poise::command(slash_command)]
+#[tracing::instrument]
+/// Challenge a user to a game of chess in a direct message
+pub async fn discord_dm(
+    ctx: Context<'_>,
+    #[description = "The user you want to play against"] other_user: User,
+    #[description = "Which side do you want to play?"] side: GameChoice,
+) -> Result<(), CommandError> {
+    todo!()
 }

@@ -107,14 +107,20 @@ version = "0.1.0"
 dependencies = [
  "arrayvec",
  "dashmap 6.0.1",
+ "dotenvy",
  "error-stack",
+ "menv",
  "poise",
+ "rand",
  "replace_with",
+ "serde",
+ "serde_json",
  "shakmaty",
  "skillratings",
  "sqlx",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "uuid",
 ]
 
@@ -261,20 +267,6 @@ name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
-
-[[package]]
-name = "chess-anywhere-server"
-version = "0.1.0"
-dependencies = [
- "backend",
- "discord",
- "dotenvy",
- "error-stack",
- "menv",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
 
 [[package]]
 name = "chrono"
@@ -489,19 +481,6 @@ dependencies = [
  "const-oid",
  "crypto-common",
  "subtle",
-]
-
-[[package]]
-name = "discord"
-version = "0.1.0"
-dependencies = [
- "backend",
- "error-stack",
- "poise",
- "rand",
- "shakmaty",
- "tokio",
- "tracing",
 ]
 
 [[package]]

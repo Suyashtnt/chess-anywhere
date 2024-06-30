@@ -238,10 +238,7 @@ impl Player {
 
                 // quick notif message
                 game_message
-                    .channel(&*http)
-                    .change_context(UpdateBoardError::DiscordError)
-                    .await?
-                    .id()
+                    .channel_id
                     .send_message(
                         &*http,
                         CreateMessage::new().content(format!("{}", user.mention())),

@@ -8,4 +8,7 @@ require_envs! {
 
     discord_token, "DISCORD_TOKEN", String,
     "Please set DISCORD_TOKEN to a discord bot token";
+
+    resend_api_key, "RESEND_API_KEY", String,
+    "Please set RESEND_API_KEY to a resend.com api key";
 }

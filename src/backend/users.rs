@@ -60,7 +60,8 @@ impl Player {
                 let id = BigDecimal::from(user.id.get());
                 sqlx::query!(
                     "
-                    SELECT id, username, discord_id, elo_rating, elo_deviation, elo_volatility from users
+                    SELECT id, username, elo_rating, elo_deviation, elo_volatility from discord_id
+                    INNER JOIN users ON user_id = id
                     WHERE discord_id = $1
                     LIMIT 1
                     ",
@@ -68,16 +69,18 @@ impl Player {
                 )
                 .fetch_optional(pool)
                 .map_err(Report::from)
-                .map_ok(|row| row.map(|row| Self {
-                    id: row.id,
-                    username: row.username,
-                    platform,
-                    elo: Glicko2Rating {
-                        rating: row.elo_rating,
-                        deviation: row.elo_deviation,
-                        volatility: row.elo_volatility,
-                    },
-                }))
+                .map_ok(|row| {
+                    row.map(|row| Self {
+                        id: row.id,
+                        username: row.username,
+                        platform,
+                        elo: Glicko2Rating {
+                            rating: row.elo_rating,
+                            deviation: row.elo_deviation,
+                            volatility: row.elo_volatility,
+                        },
+                    })
+                })
                 .await
             }
         }
@@ -107,21 +110,34 @@ impl Player {
                     volatility,
                 } = Glicko2Rating::new();
 
+                let mut transaction = pool.begin().await?;
+
                 let record = sqlx::query!(
                     "
-                        INSERT INTO users (username, discord_id, elo_rating, elo_deviation, elo_volatility)
-                        VALUES ($1, $2, $3, $4, $5)
+                        INSERT INTO users (username, elo_rating, elo_deviation, elo_volatility)
+                        VALUES ($1, $2, $3, $4)
                         RETURNING id, username
                     ",
                     user.name,
-                    id,
                     rating,
                     deviation,
                     volatility
                 )
-                .fetch_one(pool)
-                .map_err(Report::from)
+                .fetch_one(&mut *transaction)
                 .await?;
+
+                sqlx::query!(
+                    "
+                    INSERT INTO discord_id (discord_id, user_id)
+                    VALUES ($1, $2)
+                    ",
+                    id,
+                    record.id
+                )
+                .execute(&mut *transaction)
+                .await?;
+
+                transaction.commit().await?;
 
                 Ok(Self {
                     id: record.id,

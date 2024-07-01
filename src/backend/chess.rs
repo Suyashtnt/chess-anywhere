@@ -1,16 +1,20 @@
-use std::{error::Error, fmt};
+use std::{error::Error, fmt, iter::once};
 
 use arrayvec::ArrayVec;
 use error_stack::{ensure, Result, ResultExt};
 use replace_with::replace_with_or_abort_and_return;
 use shakmaty::{san::San, Board, Chess, Color, Move, Outcome, Position};
 
-pub type SanArray = ArrayVec<San, 256>;
-pub type SanArrayString = ArrayVec<String, 256>;
+use super::DRAW_OFFER_SAN;
+
+pub type SanArray = ArrayVec<String, 256>;
 
 #[derive(Debug)]
 /// Lightweight wrapper around the shakmaty Chess board
-pub struct ChessGame(Chess);
+pub(super) struct ChessGame {
+    game: Chess,
+    draw_offer: Option<Color>,
+}
 
 #[derive(Debug)]
 pub enum ChessError {
@@ -37,7 +41,10 @@ impl Error for ChessError {}
 
 impl ChessGame {
     pub fn new() -> Self {
-        Self(Chess::default())
+        Self {
+            game: Chess::default(),
+            draw_offer: None,
+        }
     }
 
     /// Plays a move for the given player
@@ -49,50 +56,71 @@ impl ChessGame {
     /// Errors if the move is invalid or it is not the player's turn
     pub fn play_move(&mut self, player_color: &Color, san: San) -> Result<Move, ChessError> {
         // just in case we didn't remove the game yet for some reason
-        ensure!(!self.0.is_game_over(), ChessError::GameOver);
+        ensure!(!self.game.is_game_over(), ChessError::GameOver);
 
-        let color_to_move = self.0.turn();
+        let color_to_move = self.game.turn();
         ensure!(
             player_color.is_white() == color_to_move.is_white(),
             ChessError::NotYourTurn
         );
 
         let chess_move = san
-            .to_move(&self.0)
+            .to_move(&self.game)
             .attach_printable("Failed to convert SAN to move")
             .change_context(ChessError::InvalidMove)?;
 
-        let was_successful =
-            replace_with_or_abort_and_return(&mut self.0, |board| match board.play(&chess_move) {
-                Ok(new_board) => (true, new_board),
-                Err(err) => (false, err.into_inner()),
-            });
+        let was_successful = replace_with_or_abort_and_return(&mut self.game, |board| match board
+            .play(&chess_move)
+        {
+            Ok(new_board) => (true, new_board),
+            Err(err) => (false, err.into_inner()),
+        });
 
         ensure!(was_successful, ChessError::InvalidMove);
+
+        // remove any draw offers
+        self.draw_offer = None;
 
         Ok(chess_move)
     }
 
+    /// Sets the draw offer for the current player
+    ///
+    /// # Returns
+    /// Returns true if the draw offer was already set by the other player,
+    /// and the game is therefore now a draw.
+    pub fn draw_offer(&mut self, player_color: Color) -> bool {
+        if self.draw_offer.is_some_and(|c| c != player_color) {
+            true
+        } else {
+            self.draw_offer = Some(player_color);
+            false
+        }
+    }
+
     pub fn outcome(&self) -> Option<Outcome> {
-        self.0.outcome()
+        self.game.outcome()
     }
 
     pub fn is_check(&self) -> bool {
-        self.0.is_check()
+        self.game.is_check()
     }
 
     /// Returns the SAN of the valid moves for the current player
+    ///
+    /// This includes = for draw offers
     pub fn valid_moves_san(&self) -> SanArray {
-        self.0
+        self.game
             .legal_moves()
             .into_iter()
-            .map(|m| San::from_move(&self.0, &m))
+            .map(|m| m.to_string())
+            .chain(once(DRAW_OFFER_SAN.to_string()))
             .collect()
     }
 
     /// Gets the current board
     pub fn board(&self) -> &Board {
-        self.0.board()
+        self.game.board()
     }
 }
 
@@ -103,4 +131,6 @@ pub enum MoveStatus {
     Checkmate,
     Stalemate,
     GameStart,
+    DrawOffer(Color),
+    Draw,
 }

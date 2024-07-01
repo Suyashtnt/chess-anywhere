@@ -20,7 +20,7 @@ use poise::{
     CreateReply,
 };
 use tokio::task::JoinHandle;
-use tracing::{error, info};
+use tracing::error;
 
 pub struct DiscordBotService {
     http: Arc<serenity::http::Http>,
@@ -97,7 +97,9 @@ impl DiscordBotService {
     ///
     /// # Returns
     /// Returns Ok(Some(message)) if the user accepted the challenge (and the message is the game board message),
+    ///
     /// Ok(None) if the user declined the challenge or did not respond in time,
+    ///
     /// and Err(ChallengeError) if the challenge could not be sent
     pub async fn challenge_user_discord(
         &self,

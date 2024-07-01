@@ -7,13 +7,14 @@ use skillratings::Outcomes;
 use std::{
     error::Error,
     fmt::{self, Debug},
-    mem::discriminant,
     sync::Arc,
 };
 use users::{Player, PlayerPlatform, UpdateBoardError};
 
 pub mod chess;
 pub mod users;
+
+pub const DRAW_OFFER_SAN: &str = "=";
 
 #[derive(Debug)]
 pub struct ChallengeError;
@@ -136,18 +137,20 @@ impl BackendService {
     async fn update_board(info: &mut GameInfo<'_>) -> Result<(), UpdateBoardError> {
         info.black
             .update_board(
+                info.white.username(),
+                &Color::Black,
                 &info.board,
                 &info.last_move,
-                info.white.username(),
                 info.last_player == Color::Black,
             )
             .await?;
 
         info.white
             .update_board(
+                info.black.username(),
+                &Color::White,
                 &info.board,
                 &info.last_move,
-                info.black.username(),
                 info.last_player == Color::White,
             )
             .await
@@ -167,17 +170,24 @@ impl BackendService {
         player: PlayerPlatform,
         san: &str,
     ) -> Result<MoveStatus, ChessError> {
-        let san: San = san
-            .parse::<San>()
-            .attach_printable("Failed to parse SAN")
-            .change_context(ChessError::InvalidMove)?;
-
         let Some(mut game) = self.get_game(&player) else {
             bail!(ChessError::InvalidPlayer)
         };
 
         let (mut white, mut black) = game.key().to_owned();
         let current_player_color = Color::from_white(player == *white.platform());
+
+        if san == DRAW_OFFER_SAN {
+            return self
+                .handle_draw(game, current_player_color, &mut white, &mut black)
+                .await;
+        }
+
+        let san: San = san
+            .parse::<San>()
+            .attach_printable("Failed to parse SAN")
+            .change_context(ChessError::InvalidMove)?;
+
         let chess_move = game.play_move(&current_player_color, san)?;
         let current_player_color = current_player_color.other();
 
@@ -207,10 +217,56 @@ impl BackendService {
         if let Some(outcome) = game.outcome() {
             let key = game.key().to_owned();
             drop(game);
-            self.handle_game_over(&key, outcome).await?;
+            self.update_game_elo(&key, outcome).await?;
         }
 
         Ok(move_status)
+    }
+
+    async fn handle_draw(
+        &self,
+        mut game: Game<'_>,
+        current_player_color: Color,
+        white: &mut Player,
+        black: &mut Player,
+    ) -> Result<MoveStatus, ChessError> {
+        if game.draw_offer(current_player_color) {
+            let move_status = MoveStatus::Draw;
+
+            let mut game_info = GameInfo {
+                white,
+                black,
+                last_move: &move_status,
+                last_player: current_player_color,
+                board: game.board(),
+            };
+
+            Self::update_board(&mut game_info)
+                .await
+                .change_context(ChessError::DatabaseError)?;
+
+            let key = game.key().to_owned();
+            drop(game);
+            // don't update any ELOs, just remove the game
+            self.current_games.remove(&key);
+            Ok(MoveStatus::Draw)
+        } else {
+            let move_status = MoveStatus::DrawOffer(current_player_color);
+
+            let mut game_info = GameInfo {
+                white,
+                black,
+                last_move: &move_status,
+                last_player: current_player_color,
+                board: game.board(),
+            };
+
+            Self::update_board(&mut game_info)
+                .await
+                .change_context(ChessError::DatabaseError)?;
+
+            Ok(MoveStatus::DrawOffer(current_player_color))
+        }
     }
 
     /// Gets the game for a specific player on discord
@@ -239,7 +295,7 @@ impl BackendService {
         game.valid_moves_san()
     }
 
-    async fn handle_game_over<'a>(
+    async fn update_game_elo<'a>(
         &self,
         key: &(Player, Player),
         outcome: Outcome,

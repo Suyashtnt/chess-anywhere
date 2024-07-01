@@ -34,6 +34,8 @@ impl<'a> BoardDrawer<'a> {
             MoveStatus::Check => 981209797716238366,
             MoveStatus::Checkmate => 981209797712035920,
             MoveStatus::Stalemate => 979399119644799026,
+            MoveStatus::DrawOffer(_) => 981223404520763522,
+            MoveStatus::Draw => 981223404520763522,
         }
         .into();
 
@@ -289,6 +291,7 @@ impl<'a> BoardDrawer<'a> {
 pub fn create_board_embed(
     current_player_name: &str,
     other_player_name: &str,
+    our_color: &Color,
     board: &Board,
     move_status: &MoveStatus,
     is_our_turn: bool,
@@ -299,7 +302,7 @@ pub fn create_board_embed(
         .title(format!("{} vs {}", current_player_name, other_player_name))
         .description(board_drawer.draw())
         .footer(CreateEmbedFooter::new(
-            "Run /move to make a move on Discord using SAN",
+            "Use `/move` to make a move using SAN. you can use `/move =` to offer draw.",
         ));
 
     match move_status {
@@ -343,6 +346,20 @@ pub fn create_board_embed(
             };
 
             embed = embed.field("Current player", current_player, true);
+        }
+        MoveStatus::DrawOffer(color) => {
+            if our_color == color {
+                embed = embed.field("Draw offer", "Waiting for opponent to accept", true);
+            } else {
+                embed = embed.field(
+                    "Draw offer",
+                    format!("{} offered a draw! use `/move =` to accept, or make any other move to decline", other_player_name),
+                    true,
+                );
+            }
+        }
+        MoveStatus::Draw => {
+            embed = embed.field("Draw!", "The game is a draw.", true);
         }
     }
 

@@ -4,7 +4,7 @@ use error_stack::{FutureExt, Report, Result};
 use poise::serenity_prelude::{
     futures::TryFutureExt, CreateMessage, EditMessage, Http, Mentionable, Message, User,
 };
-use shakmaty::Board;
+use shakmaty::{Board, Color};
 use skillratings::{
     glicko2::{glicko2, Glicko2Config, Glicko2Rating},
     Outcomes,
@@ -76,7 +76,7 @@ impl Player {
                         rating: row.elo_rating,
                         deviation: row.elo_deviation,
                         volatility: row.elo_volatility,
-                    }
+                    },
                 }))
                 .await
             }
@@ -217,9 +217,10 @@ impl Player {
 
     pub async fn update_board(
         &mut self,
+        other_player_name: &str,
+        our_color: &Color,
         board: &Board,
         move_status: &MoveStatus,
-        other_player_name: &str,
         is_our_turn: bool,
     ) -> Result<(), UpdateBoardError> {
         match &mut self.platform {
@@ -231,6 +232,7 @@ impl Player {
                 let embed = create_board_embed(
                     &self.username,
                     other_player_name,
+                    our_color,
                     board,
                     move_status,
                     is_our_turn,

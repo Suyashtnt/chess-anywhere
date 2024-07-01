@@ -279,59 +279,78 @@ pub async fn discord_dm(
         http: ctx.serenity_context().http.clone(),
     };
 
-    let Some(opponent) = DISCORD_BOT_SERVICE
+    match DISCORD_BOT_SERVICE
         .get()
         .unwrap()
         .challenge_user_discord(&ctx.author().name, other_user.id)
         .change_context_lazy(error)
         .attach_lazy(&error_user)
-        .await?
-    else {
-        message
-            .edit(
-                ctx.http(),
-                EditMessage::default()
-                    .content("The other user declined the challenge. Better luck next time!"),
-            )
-            .change_context_lazy(error)
-            .attach_lazy(error_user)
-            .await?;
+        .await
+    {
+        Ok(Some(opponent)) => {
+            let (white, black) = match side {
+                GameChoice::White => (author, opponent),
+                GameChoice::Black => (opponent, author),
+                GameChoice::Random => {
+                    if rand::random() {
+                        (author, opponent)
+                    } else {
+                        (opponent, author)
+                    }
+                }
+                GameChoice::TransferResponsibility => {
+                    message
+                        .edit(
+                            &ctx.http(),
+                            EditMessage::default()
+                                .content("Asking the other user to decide is not implemented yet!")
+                                .components(vec![]),
+                        )
+                        .await
+                        .change_context_lazy(error)?;
 
-        return Ok(());
-    };
+                    return Ok(());
+                }
+            };
 
-    let (white, black) = match side {
-        GameChoice::White => (author, opponent),
-        GameChoice::Black => (opponent, author),
-        GameChoice::Random => {
-            if rand::random() {
-                (author, opponent)
-            } else {
-                (opponent, author)
-            }
+            let backend = BACKEND_SERVICE.get().unwrap();
+
+            backend
+                .create_game(white, black)
+                .change_context_lazy(error)
+                .attach_lazy(error_user)
+                .await
         }
-        GameChoice::TransferResponsibility => {
+        Ok(None) => {
             message
                 .edit(
-                    &ctx.http(),
+                    ctx.http(),
                     EditMessage::default()
-                        .content("Asking the other user to decide is not implemented yet!")
-                        .components(vec![]),
+                        .content("The other user declined the challenge. Better luck next time!"),
                 )
+                .change_context_lazy(error)
+                .attach_lazy(error_user)
                 .await
-                .change_context_lazy(error)?;
-
-            return Ok(());
         }
-    };
+        Err(err) => {
+            let current_frame: &CreateGameError =
+                err.frames().find_map(|frame| frame.downcast_ref()).unwrap();
 
-    let backend = BACKEND_SERVICE.get().unwrap();
-
-    backend
-        .create_game(white, black)
-        .change_context_lazy(error)
-        .attach_lazy(error_user)
-        .await?;
-
-    Ok(())
+            match current_frame {
+                CreateGameError::PlayerInGame => {
+                    message
+                        .edit(
+                            &ctx.http(),
+                            EditMessage::default()
+                                .content("One of y'all are already in a game!")
+                                .components(vec![]),
+                        )
+                        .change_context_lazy(error)
+                        .attach(error_user)
+                        .await
+                }
+                _ => return Err(err.change_context(error())),
+            }
+        }
+    }
 }

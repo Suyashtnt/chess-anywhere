@@ -1,5 +1,5 @@
 use crate::{
-    backend::chess::{ChessError, MoveStatus, SanArrayString},
+    backend::chess::{ChessError, MoveStatus, SanArray},
     discord::{
         error::{Arg, Argument, CommandError},
         Context,
@@ -71,6 +71,24 @@ pub async fn r#move(
                     .change_context_lazy(error)
                     .await?;
                 }
+                MoveStatus::DrawOffer(_) => {
+                    ctx.send(
+                        CreateReply::default()
+                            .content("Draw offer sent!")
+                            .ephemeral(true),
+                    )
+                    .change_context_lazy(error)
+                    .await?;
+                }
+                MoveStatus::Draw => {
+                    ctx.send(
+                        CreateReply::default()
+                            .content("Game over! Draw accepted!")
+                            .ephemeral(true),
+                    )
+                    .change_context_lazy(error)
+                    .await?;
+                }
                 MoveStatus::GameStart => unreachable!(),
             };
         }
@@ -108,11 +126,11 @@ pub async fn r#move(
     Ok(())
 }
 
-async fn autocomplete_moves<'a>(ctx: Context<'_>, partial: &'a str) -> SanArrayString {
+async fn autocomplete_moves<'a>(ctx: Context<'_>, partial: &'a str) -> SanArray {
     let backend = BACKEND_SERVICE.get().unwrap();
 
     let Some(player_platform) = backend.find_player_discord(ctx.author().id).await else {
-        return SanArrayString::new_const();
+        return SanArray::new_const();
     };
 
     backend

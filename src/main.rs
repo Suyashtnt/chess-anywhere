@@ -1,11 +1,13 @@
+mod api;
 mod backend;
 mod discord;
 
+use api::ApiService;
 use backend::BackendService;
 use discord::DiscordBotService;
-use error_stack::{bail, Result, ResultExt};
+use error_stack::{bail, FutureExt, Result, ResultExt};
 use std::fmt;
-use tokio::sync::OnceCell;
+use tokio::{select, sync::OnceCell};
 use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
 
@@ -13,6 +15,7 @@ mod env;
 
 pub static BACKEND_SERVICE: OnceCell<BackendService> = OnceCell::const_new();
 pub static DISCORD_BOT_SERVICE: OnceCell<DiscordBotService> = OnceCell::const_new();
+pub static API_SERVICE: OnceCell<ApiService> = OnceCell::const_new();
 
 #[derive(Debug)]
 enum MainError {
@@ -65,33 +68,46 @@ async fn main() -> Result<(), MainError> {
 
     // initialize services
 
+    let pg_pool = sqlx::postgres::PgPool::connect(&env::database_url())
+        .change_context(MainError::ServiceError)
+        .await?;
+
     BACKEND_SERVICE
         .set(
-            BackendService::new(env::database_url())
+            BackendService::new(pg_pool.clone())
                 .await
                 .attach_printable("Failed to initialize backend service")
                 .change_context(MainError::ServiceError)?,
         )
         .unwrap();
 
-    BACKEND_SERVICE
-        .get()
-        .unwrap()
-        .run()
-        .await
-        .attach_printable("Failed to run backend service")
-        .change_context(MainError::ServiceError)?;
-
-    let (bot_service, task) = DiscordBotService::start(env::discord_token())
-        .await
-        .change_context(MainError::ServiceError)?;
+    let (bot_service, bot_task) = DiscordBotService::start(env::discord_token())
+        .change_context(MainError::ServiceError)
+        .await?;
 
     DISCORD_BOT_SERVICE.set(bot_service).unwrap();
 
+    let (api_service, api_task) = ApiService::start(
+        &env::resend_api_key(),
+        pg_pool.clone(),
+        async {
+            select! {
+                _ = bot_task => (),
+                _ = tokio::signal::ctrl_c() => (),
+            }
+        },
+        3000,
+    )
+    .change_context(MainError::ServiceError)
+    .await?;
+
+    API_SERVICE.set(api_service).unwrap();
+
     info!("Services initialized successfully");
 
-    task.await
-        .change_context(MainError::ServiceError)?
+    api_task
+        .change_context(MainError::ServiceError)
+        .await?
         .change_context(MainError::ServiceError)?;
 
     Ok(())

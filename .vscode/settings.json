@@ -1,6 +1,7 @@
 {
     "conventionalCommits.scopes": [
         "backend",
-        "discord"
+        "discord",
+        "api"
     ]
 }

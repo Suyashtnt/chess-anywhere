@@ -75,8 +75,11 @@ pub(crate) struct GameInfo<'a> {
 }
 
 impl BackendService {
-    pub async fn new(db_url: String) -> Result<Self, sqlx::Error> {
-        let pg_pool = sqlx::postgres::PgPool::connect(&db_url).await?;
+    pub async fn new(pg_pool: sqlx::postgres::PgPool) -> Result<Self, ServiceError> {
+        sqlx::migrate!()
+            .run(&pg_pool)
+            .await
+            .change_context(ServiceError)?;
 
         Ok(Self {
             pool: pg_pool,
@@ -334,16 +337,5 @@ impl BackendService {
             let (white, black) = entry.key();
             white.platform() == player || black.platform() == player
         })
-    }
-
-    /// Initializes the database and fills up various caches
-    #[tracing::instrument]
-    pub async fn run(&self) -> Result<(), ServiceError> {
-        sqlx::migrate!()
-            .run(&self.pool)
-            .await
-            .change_context(ServiceError)?;
-
-        Ok(())
     }
 }

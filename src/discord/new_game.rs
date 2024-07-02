@@ -40,6 +40,7 @@ enum GameChoice {
 
 #[poise::command(slash_command)]
 #[tracing::instrument]
+/// Play a game of chess with another user on this server
 pub async fn discord(
     ctx: Context<'_>,
     #[description = "The user you want to play against"] other_user: User,

@@ -1,5 +1,6 @@
 pub mod board;
 pub mod error;
+mod link;
 mod move_piece;
 mod new_game;
 
@@ -41,7 +42,12 @@ impl DiscordBotService {
 
         let framework = poise::Framework::builder()
             .options(poise::FrameworkOptions {
-                commands: vec![move_piece::r#move(), new_game::new_game(), register()],
+                commands: vec![
+                    move_piece::r#move(),
+                    new_game::new_game(),
+                    register(),
+                    link::link(),
+                ],
                 on_error: |error| {
                     Box::pin(async move {
                         match error {
@@ -214,6 +220,7 @@ impl DiscordBotService {
 
 pub(crate) type Error = Report<CommandError>;
 pub(crate) type Context<'a> = poise::Context<'a, (), Error>;
+pub(crate) type ApplicationContext<'a> = poise::ApplicationContext<'a, (), Error>;
 
 #[poise::command(prefix_command, slash_command)]
 pub async fn register(ctx: Context<'_>) -> Result<(), CommandError> {

@@ -29,10 +29,11 @@ use crate::backend::ServiceError;
 #[derive(Debug, Clone)]
 pub struct ApiService {
     session_store: PostgresStore,
-    state: ApiState,
+    pub state: ApiState,
 }
 
 #[derive(Debug, Clone)]
+/// A more direct API to the database and email sending
 pub struct ApiState {
     resend: Resend,
     pool: sqlx::postgres::PgPool,
@@ -116,6 +117,16 @@ impl ApiState {
     }
 
     pub async fn send_magic_email(&self, email: &str, user_id: Uuid) -> Result<(), EmailError> {
+        // silently ignore if email already exists
+        if self
+            .get_userid_by_email(&email)
+            .change_context(EmailError::SqlxError)
+            .await?
+            .is_some()
+        {
+            return Ok(());
+        };
+
         let entropy: Vec<u8> = (0..32).map(|_| rand::random()).collect();
 
         // convert entropy into a string
@@ -159,6 +170,10 @@ impl ApiState {
             .await?;
 
         Ok(())
+    }
+
+    pub fn pool(&self) -> &sqlx::postgres::PgPool {
+        &self.pool
     }
 }
 
@@ -227,9 +242,5 @@ impl ApiService {
             },
             task,
         ))
-    }
-
-    pub async fn run(&self) -> Result<(), ServiceError> {
-        todo!()
     }
 }

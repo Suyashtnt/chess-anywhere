@@ -34,6 +34,7 @@ impl PartialEq for PlayerPlatform {
 impl Eq for PlayerPlatform {}
 
 #[derive(Debug, Clone)]
+/// A high-level currently playing player API
 pub struct Player {
     /// UUID of the player
     ///

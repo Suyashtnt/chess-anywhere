@@ -1,6 +1,7 @@
 mod api;
 mod backend;
 mod discord;
+mod users;
 
 use api::ApiService;
 use backend::BackendService;
@@ -10,12 +11,14 @@ use std::fmt;
 use tokio::{select, sync::OnceCell};
 use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
+use users::UserService;
 
 mod env;
 
 pub static BACKEND_SERVICE: OnceCell<BackendService> = OnceCell::const_new();
 pub static DISCORD_BOT_SERVICE: OnceCell<DiscordBotService> = OnceCell::const_new();
 pub static API_SERVICE: OnceCell<ApiService> = OnceCell::const_new();
+pub static USER_SERVICE: OnceCell<UserService> = OnceCell::const_new();
 
 #[derive(Debug)]
 enum MainError {

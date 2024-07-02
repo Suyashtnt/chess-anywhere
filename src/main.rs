@@ -11,7 +11,6 @@ use std::fmt;
 use tokio::{select, sync::OnceCell};
 use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
-use users::UserService;
 
 mod env;
 
@@ -70,7 +69,7 @@ async fn main() -> Result<(), MainError> {
 
     // initialize services
 
-    let pg_pool = sqlx::postgres::PgPool::connect(&env::database_url())
+    let pg_pool = sqlx::PgPool::connect(&env::database_url())
         .change_context(MainError::ServiceError)
         .await?;
 
@@ -83,7 +82,7 @@ async fn main() -> Result<(), MainError> {
         )
         .unwrap();
 
-    let (bot_service, bot_task) = DiscordBotService::start(env::discord_token())
+    let (bot_service, bot_task) = DiscordBotService::start(env::discord_token(), pg_pool.clone())
         .change_context(MainError::ServiceError)
         .await?;
 

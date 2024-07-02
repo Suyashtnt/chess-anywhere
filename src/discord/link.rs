@@ -64,7 +64,7 @@ pub async fn email(ctx: ApplicationContext<'_>) -> Result<(), CommandError> {
             game_message: message.clone(),
             http: ctx.serenity_context().http.clone(),
         },
-        api_service.state.pool(),
+        &ctx.data.pool,
     )
     .change_context_lazy(&error)
     .await?;

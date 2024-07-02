@@ -1,35 +1,18 @@
 // TODO: refactor app to depend on this for getting users from the database
 
-use std::fmt;
-
 use error_stack::Result;
 use poise::serenity_prelude::UserId;
 use skillratings::glicko2::Glicko2Rating;
 use sqlx::{types::BigDecimal, Executor, Postgres};
 use uuid::Uuid;
 
-pub struct UserService<E>(E);
-
-impl<'e, 'c: 'e, E> fmt::Debug for UserService<E>
-where
-    E: Executor<'c, Database = Postgres> + fmt::Debug + 'e,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("UserService")
-            .field("0", &self.0 as &dyn fmt::Debug)
-            .finish()
-    }
-}
-
-impl<'e, 'c: 'e, E> UserService<E>
-where
-    E: Executor<'c, Database = Postgres> + 'e,
-{
-    pub const fn new(db: E) -> Self {
-        Self(db)
-    }
-
-    pub async fn fetch_user_by_id(self, id: Uuid) -> Result<Option<User>, sqlx::Error> {
+#[derive(Debug)]
+pub struct UserService;
+impl UserService {
+    pub async fn fetch_user_by_id(
+        id: Uuid,
+        executor: impl Executor<'_, Database = Postgres>,
+    ) -> Result<Option<User>, sqlx::Error> {
         sqlx::query_as!(
             RawUser,
             "
@@ -39,13 +22,56 @@ where
             ",
             id
         )
-        .fetch_optional(self.0)
+        .fetch_optional(executor)
         .await
         .map(|row| row.map(Into::into))
         .map_err(Into::into)
     }
 
-    pub async fn fetch_user_by_discord_id(self, id: UserId) -> Result<Option<User>, sqlx::Error> {
+    pub async fn fetch_user_by_username(
+        username: &str,
+        executor: impl Executor<'_, Database = Postgres>,
+    ) -> Result<Option<User>, sqlx::Error> {
+        sqlx::query_as!(
+            RawUser,
+            "
+            SELECT id, username, elo_rating, elo_deviation, elo_volatility
+            FROM users
+            WHERE username = $1
+            ",
+            username
+        )
+        .fetch_optional(executor)
+        .await
+        .map(|row| row.map(Into::into))
+        .map_err(Into::into)
+    }
+
+    pub async fn fetch_user_by_email(
+        email: &str,
+        executor: impl Executor<'_, Database = Postgres>,
+    ) -> Result<Option<User>, sqlx::Error> {
+        sqlx::query_as!(
+            RawUser,
+            "
+            SELECT id, username, elo_rating, elo_deviation, elo_volatility
+            FROM email_login
+            INNER JOIN users ON user_id = id
+            WHERE email = $1
+            LIMIT 1
+            ",
+            email
+        )
+        .fetch_optional(executor)
+        .await
+        .map(|row| row.map(Into::into))
+        .map_err(Into::into)
+    }
+
+    pub async fn fetch_user_by_discord_id(
+        id: UserId,
+        executor: impl Executor<'_, Database = Postgres>,
+    ) -> Result<Option<User>, sqlx::Error> {
         let id = BigDecimal::from(id.get());
         sqlx::query_as!(
             RawUser,
@@ -58,13 +84,16 @@ where
             ",
             id
         )
-        .fetch_optional(self.0)
+        .fetch_optional(executor)
         .await
         .map(|row| row.map(Into::into))
         .map_err(Into::into)
     }
 
-    pub async fn delete_user(self, id: Uuid) -> Result<(), sqlx::Error> {
+    pub async fn delete_user(
+        id: Uuid,
+        executor: impl Executor<'_, Database = Postgres>,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query!(
             "
             DELETE FROM users
@@ -72,13 +101,16 @@ where
             ",
             id
         )
-        .execute(self.0)
+        .execute(executor)
         .await
         .map(|_| ())
         .map_err(Into::into)
     }
 
-    pub async fn add_user(self, username: &str) -> Result<User, sqlx::Error> {
+    pub async fn create(
+        username: &str,
+        executor: impl Executor<'_, Database = Postgres>,
+    ) -> Result<User, sqlx::Error> {
         let Glicko2Rating {
             deviation,
             rating,
@@ -97,16 +129,16 @@ where
             deviation,
             volatility
         )
-        .fetch_one(self.0)
+        .fetch_one(executor)
         .await
         .map(Into::into)
         .map_err(Into::into)
     }
 
-    pub async fn attach_discord_id(
-        self,
+    async fn attach_discord_id(
         user: &User,
         discord_id: UserId,
+        executor: impl Executor<'_, Database = Postgres>,
     ) -> Result<(), sqlx::Error> {
         let id = BigDecimal::from(discord_id.get());
         sqlx::query!(
@@ -117,23 +149,56 @@ where
             id,
             user.id()
         )
-        .execute(self.0)
+        .execute(executor)
         .await
         .map(|_| ())
         .map_err(Into::into)
     }
-}
 
-impl<'e, 'c: 'e, E> Clone for UserService<E>
-where
-    E: Executor<'c, Database = Postgres> + Clone + 'e,
-{
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
+    async fn update_elo(
+        user_id: Uuid,
+        elo: Glicko2Rating,
+        executor: impl Executor<'_, Database = Postgres>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            "
+            UPDATE users
+            SET elo_rating = $1, elo_deviation = $2, elo_volatility = $3
+            WHERE id = $4
+            ",
+            elo.rating,
+            elo.deviation,
+            elo.volatility,
+            user_id
+        )
+        .execute(executor)
+        .await
+        .map(|_| ())
+        .map_err(Into::into)
+    }
+
+    pub async fn add_email_verification(
+        user_id: Uuid,
+        email: &str,
+        data: &[u8],
+        executor: impl Executor<'_, Database = Postgres>,
+    ) -> Result<Uuid, sqlx::Error> {
+        sqlx::query!(
+            "
+            INSERT INTO email_verification (user_id, email, data, expiry_date)
+            VALUES ($1, $2, $3, NOW() + INTERVAL '1 day')
+            RETURNING id
+            ",
+            user_id,
+            email,
+            data
+        )
+        .fetch_one(executor)
+        .await
+        .map(|row| row.id)
+        .map_err(Into::into)
     }
 }
-
-impl<'e, 'c: 'e, E> Copy for UserService<E> where E: Executor<'c, Database = Postgres> + Copy + 'e {}
 
 #[derive(Debug, Clone)]
 pub struct User {
@@ -170,8 +235,21 @@ impl User {
         self.elo
     }
 
-    pub fn update_elo(&mut self, new_elo: Glicko2Rating) {
+    pub async fn update_elo(
+        &mut self,
+        new_elo: Glicko2Rating,
+        executor: impl Executor<'_, Database = Postgres>,
+    ) -> Result<(), sqlx::Error> {
         self.elo = new_elo;
+        UserService::update_elo(self.id, new_elo, executor).await
+    }
+
+    pub async fn attach_discord_id(
+        &self,
+        discord_id: UserId,
+        executor: impl Executor<'_, Database = Postgres>,
+    ) -> Result<(), sqlx::Error> {
+        UserService::attach_discord_id(self, discord_id, executor).await
     }
 }
 

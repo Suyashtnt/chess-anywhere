@@ -38,7 +38,7 @@ impl Error for ServiceError {}
 
 #[derive(Debug, Clone)]
 pub struct BackendService {
-    pool: sqlx::postgres::PgPool,
+    pool: sqlx::PgPool,
     current_games: Arc<DashMap<(Player, Player), ChessGame>>,
 }
 
@@ -75,7 +75,7 @@ pub(crate) struct GameInfo<'a> {
 }
 
 impl BackendService {
-    pub async fn new(pg_pool: sqlx::postgres::PgPool) -> Result<Self, ServiceError> {
+    pub async fn new(pg_pool: sqlx::PgPool) -> Result<Self, ServiceError> {
         sqlx::migrate!()
             .run(&pg_pool)
             .await

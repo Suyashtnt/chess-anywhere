@@ -37,6 +37,7 @@ impl fmt::Debug for DiscordBotService {
 impl DiscordBotService {
     pub async fn start(
         token: String,
+        pool: sqlx::PgPool,
     ) -> Result<(Self, JoinHandle<Result<(), ServiceError>>), ServiceError> {
         let intents = serenity::GatewayIntents::non_privileged();
 
@@ -76,7 +77,7 @@ impl DiscordBotService {
                 },
                 ..Default::default()
             })
-            .setup(|_ctx, _ready, _framework| Box::pin(async move { Ok(()) }))
+            .setup(|_ctx, _ready, _framework| Box::pin(async move { Ok(DiscordState { pool }) }))
             .build();
 
         let mut client = serenity::ClientBuilder::new(&token, intents)
@@ -218,9 +219,14 @@ impl DiscordBotService {
     }
 }
 
+#[derive(Debug)]
+pub(crate) struct DiscordState {
+    pool: sqlx::PgPool,
+}
+
 pub(crate) type Error = Report<CommandError>;
-pub(crate) type Context<'a> = poise::Context<'a, (), Error>;
-pub(crate) type ApplicationContext<'a> = poise::ApplicationContext<'a, (), Error>;
+pub(crate) type Context<'a> = poise::Context<'a, DiscordState, Error>;
+pub(crate) type ApplicationContext<'a> = poise::ApplicationContext<'a, DiscordState, Error>;
 
 #[poise::command(prefix_command, slash_command)]
 pub async fn register(ctx: Context<'_>) -> Result<(), CommandError> {

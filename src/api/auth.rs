@@ -101,7 +101,7 @@ async fn signup_email(
     }
 
     let user_id = state
-        .create_user(&username)
+        .add_user(&username)
         .change_context(AuthError::BackendError)
         .await?;
 

@@ -40,11 +40,11 @@ impl AuthUser for User {
 
 #[derive(Debug, Clone)]
 pub struct Backend {
-    db: sqlx::postgres::PgPool,
+    db: sqlx::PgPool,
 }
 
 impl Backend {
-    pub fn new(db: sqlx::postgres::PgPool) -> Self {
+    pub fn new(db: sqlx::PgPool) -> Self {
         Self { db }
     }
 }

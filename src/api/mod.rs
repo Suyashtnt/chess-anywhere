@@ -4,7 +4,6 @@ pub mod user;
 
 use base64::prelude::*;
 use core::fmt;
-use skillratings::glicko2::Glicko2Rating;
 use std::{
     future::{Future, IntoFuture},
     net::SocketAddr,
@@ -23,7 +22,7 @@ use tower_sessions::{
 use tower_sessions_sqlx_store::PostgresStore;
 use uuid::Uuid;
 
-use crate::backend::ServiceError;
+use crate::{backend::ServiceError, users::UserService};
 
 /// An axum server exposing ways to play chess through an API
 #[derive(Debug, Clone)]
@@ -36,7 +35,7 @@ pub struct ApiService {
 /// A more direct API to the database and email sending
 pub struct ApiState {
     resend: Resend,
-    pool: sqlx::postgres::PgPool,
+    pool: sqlx::PgPool,
 }
 
 #[derive(Debug)]
@@ -61,59 +60,23 @@ impl ApiState {
         &self,
         username: &str,
     ) -> Result<Option<Uuid>, sqlx::Error> {
-        sqlx::query!(
-            "
-                SELECT id
-                FROM users
-                WHERE username = $1
-            ",
-            username
-        )
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(Report::from)
-        .map(|row| row.map(|row| row.id))
+        UserService::fetch_user_by_username(username, &self.pool)
+            .await
+            .map_err(Report::from)
+            .map(|row| row.map(|row| row.id()))
     }
 
     pub async fn get_userid_by_email(&self, email: &str) -> Result<Option<Uuid>, sqlx::Error> {
-        sqlx::query!(
-            "
-                SELECT user_id
-                FROM email_login
-                WHERE email = $1
-            ",
-            email
-        )
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(Report::from)
-        .map(|row| row.map(|row| row.user_id))
+        UserService::fetch_user_by_email(email, &self.pool)
+            .await
+            .map_err(Report::from)
+            .map(|row| row.map(|row| row.id()))
     }
 
-    pub async fn create_user(&self, username: &str) -> Result<Uuid, sqlx::Error> {
-        let user_id = Uuid::new_v4();
-
-        let Glicko2Rating {
-            deviation,
-            rating,
-            volatility,
-        } = Glicko2Rating::new();
-
-        sqlx::query!(
-            "
-            INSERT INTO users (id, username, elo_rating, elo_deviation, elo_volatility)
-            VALUES ($1, $2, $3, $4, $5)
-            ",
-            user_id,
-            username,
-            rating,
-            deviation,
-            volatility
-        )
-        .execute(&self.pool)
-        .await?;
-
-        Ok(user_id)
+    pub async fn add_user(&self, username: &str) -> Result<Uuid, sqlx::Error> {
+        UserService::create(username, &self.pool)
+            .await
+            .map(|row| row.id())
     }
 
     pub async fn send_magic_email(&self, email: &str, user_id: Uuid) -> Result<(), EmailError> {
@@ -132,20 +95,9 @@ impl ApiState {
         // convert entropy into a string
         let entropy_str = BASE64_URL_SAFE.encode(&entropy);
 
-        let email_id = sqlx::query!(
-            "
-            INSERT INTO email_verification (user_id, email, data, expiry_date)
-            VALUES ($1, $2, $3, NOW() + INTERVAL '1 day')
-            RETURNING id
-            ",
-            user_id,
-            email,
-            entropy
-        )
-        .fetch_one(&self.pool)
-        .change_context(EmailError::SqlxError)
-        .await?
-        .id;
+        let email_id = UserService::add_email_verification(user_id, email, &entropy, &self.pool)
+            .change_context(EmailError::SqlxError)
+            .await?;
 
         // TODO: proper email templating
         let body = format!(
@@ -171,16 +123,12 @@ impl ApiState {
 
         Ok(())
     }
-
-    pub fn pool(&self) -> &sqlx::postgres::PgPool {
-        &self.pool
-    }
 }
 
 impl ApiService {
     pub async fn start<F>(
         resend_api_key: &str,
-        pool: sqlx::postgres::PgPool,
+        pool: sqlx::PgPool,
         shutdown_signal: F,
         port: u16,
     ) -> Result<(Self, JoinHandle<Result<(), ServiceError>>), sqlx::Error>

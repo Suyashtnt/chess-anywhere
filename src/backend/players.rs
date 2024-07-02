@@ -2,7 +2,8 @@ use std::{fmt, hash::Hash, sync::Arc};
 
 use error_stack::{FutureExt, Report, Result};
 use poise::serenity_prelude::{
-    futures::TryFutureExt, CreateMessage, EditMessage, Http, Mentionable, Message, User,
+    futures::TryFutureExt, CreateMessage, EditMessage, Http, Mentionable, Message,
+    User as DiscordUser,
 };
 use shakmaty::{Board, Color};
 use skillratings::{
@@ -12,12 +13,16 @@ use skillratings::{
 use sqlx::{types::BigDecimal, PgPool};
 use uuid::Uuid;
 
-use crate::{backend::chess::MoveStatus, discord::board::create_board_embed};
+use crate::{
+    backend::chess::MoveStatus,
+    discord::board::create_board_embed,
+    users::{RawUser, User, UserService},
+};
 
 #[derive(Debug, Clone)]
 pub enum PlayerPlatform {
     Discord {
-        user: User,
+        user: DiscordUser,
         game_message: Message,
         http: Arc<Http>,
     },
@@ -36,64 +41,34 @@ impl Eq for PlayerPlatform {}
 #[derive(Debug, Clone)]
 /// A high-level currently playing player API
 pub struct Player {
-    /// UUID of the player
-    ///
-    /// Unique
-    id: Uuid,
-    /// The username of the player
-    ///
-    /// Unique
-    username: String,
+    user: User,
     /// The platform the player is currently playing on
     platform: PlayerPlatform,
-    /// The ELO rating of the player
-    elo: Glicko2Rating,
 }
 
 impl Player {
     /// Gets a user from the database based on their current platform
     pub async fn fetch(
         platform: PlayerPlatform,
-        pool: &sqlx::postgres::PgPool,
+        pool: &PgPool,
     ) -> Result<Option<Self>, sqlx::Error> {
         match platform {
-            PlayerPlatform::Discord { ref user, .. } => {
-                let id = BigDecimal::from(user.id.get());
-                sqlx::query!(
-                    "
-                    SELECT id, username, elo_rating, elo_deviation, elo_volatility from discord_id
-                    INNER JOIN users ON user_id = id
-                    WHERE discord_id = $1
-                    LIMIT 1
-                    ",
-                    id
-                )
-                .fetch_optional(pool)
-                .map_err(Report::from)
-                .map_ok(|row| {
-                    row.map(|row| Self {
-                        id: row.id,
-                        username: row.username,
-                        platform,
-                        elo: Glicko2Rating {
-                            rating: row.elo_rating,
-                            deviation: row.elo_deviation,
-                            volatility: row.elo_volatility,
-                        },
-                    })
-                })
+            PlayerPlatform::Discord { ref user, .. } => UserService::new(pool)
+                .fetch_user_by_discord_id(user.id)
                 .await
-            }
+                .map(|row| {
+                    row.map(|row| Self {
+                        user: row.into(),
+                        platform,
+                    })
+                }),
         }
     }
 
     /// Gets a user from the database based on their current platform,
     /// or creates them if they're not in the database
     /// using the provided closure to create the user
-    pub async fn upsert(
-        platform: PlayerPlatform,
-        pool: &sqlx::postgres::PgPool,
-    ) -> Result<Self, sqlx::Error> {
+    pub async fn upsert(platform: PlayerPlatform, pool: &PgPool) -> Result<Self, sqlx::Error> {
         match Self::fetch(platform.clone(), pool).await? {
             Some(user) => Ok(user),
             None => Self::create(platform, pool).await,
@@ -103,70 +78,21 @@ impl Player {
     /// Creates a new user in the database
     pub async fn create(platform: PlayerPlatform, pool: &PgPool) -> Result<Self, sqlx::Error> {
         match platform {
-            PlayerPlatform::Discord { ref user, .. } => {
-                let id = BigDecimal::from(user.id.get());
-                let Glicko2Rating {
-                    rating,
-                    deviation,
-                    volatility,
-                } = Glicko2Rating::new();
-
+            PlayerPlatform::Discord {
+                user: ref discord_user,
+                ..
+            } => {
                 let mut transaction = pool.begin().await?;
+                let service = UserService::new(transaction.as_mut());
 
-                let record = sqlx::query!(
-                    "
-                        INSERT INTO users (username, elo_rating, elo_deviation, elo_volatility)
-                        VALUES ($1, $2, $3, $4)
-                        RETURNING id, username
-                    ",
-                    user.name,
-                    rating,
-                    deviation,
-                    volatility
-                )
-                .fetch_one(&mut *transaction)
-                .await?;
-
-                sqlx::query!(
-                    "
-                    INSERT INTO discord_id (discord_id, user_id)
-                    VALUES ($1, $2)
-                    ",
-                    id,
-                    record.id
-                )
-                .execute(&mut *transaction)
-                .await?;
+                let user = service.add_user(&discord_user.name).await?;
+                service.attach_discord_id(&user, discord_user.id);
 
                 transaction.commit().await?;
 
-                Ok(Self {
-                    id: record.id,
-                    username: record.username,
-                    platform,
-                    elo: Glicko2Rating {
-                        rating,
-                        deviation,
-                        volatility,
-                    },
-                })
+                Ok(Self { user, platform })
             }
         }
-    }
-
-    /// Deletes a user from the database
-    pub async fn delete(self, pool: &PgPool) -> Result<(), sqlx::Error> {
-        sqlx::query!(
-            "
-            DELETE FROM users
-            WHERE id = $1
-            ",
-            self.id
-        )
-        .execute(pool)
-        .map_ok(|_| ())
-        .map_err(Report::from)
-        .await
     }
 
     /// Links (or updates) a user to a new platform
@@ -194,8 +120,8 @@ impl Player {
     ) -> Result<(), sqlx::Error> {
         let config = Glicko2Config::default();
         let (new_self, new_other) = glicko2(&self.elo, &black.elo, &outcome, &config);
-        self.elo = new_self;
-        black.elo = new_other;
+        self.user.update_elo(new_self);
+        black.user.update_elo(new_other);
 
         let mut transaction = pool.begin().await?;
 
@@ -205,10 +131,10 @@ impl Player {
             SET elo_rating = $1, elo_deviation = $2, elo_volatility = $3
             WHERE id = $4
             ",
-            self.elo.rating,
-            self.elo.deviation,
-            self.elo.volatility,
-            self.id
+            self.user.elo().rating,
+            self.user.elo().deviation,
+            self.user.elo().volatility,
+            self.user.id()
         )
         .execute(&mut *transaction)
         .await?;
@@ -219,10 +145,10 @@ impl Player {
             SET elo_rating = $1, elo_deviation = $2, elo_volatility = $3
             WHERE id = $4
             ",
-            black.elo.rating,
-            black.elo.deviation,
-            black.elo.volatility,
-            black.id
+            black.user.elo().rating,
+            black.user.elo().deviation,
+            black.user.elo().volatility,
+            black.user.id()
         )
         .execute(&mut *transaction)
         .await?;
@@ -247,7 +173,7 @@ impl Player {
                 user,
             } => {
                 let embed = create_board_embed(
-                    &self.username,
+                    self.user.username(),
                     other_player_name,
                     our_color,
                     board,
@@ -281,11 +207,11 @@ impl Player {
     }
 
     pub fn username(&self) -> &str {
-        &self.username
+        self.user.username()
     }
 
     pub fn id(&self) -> Uuid {
-        self.id
+        self.user.id()
     }
 }
 

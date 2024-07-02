@@ -18,7 +18,6 @@ mod env;
 pub static BACKEND_SERVICE: OnceCell<BackendService> = OnceCell::const_new();
 pub static DISCORD_BOT_SERVICE: OnceCell<DiscordBotService> = OnceCell::const_new();
 pub static API_SERVICE: OnceCell<ApiService> = OnceCell::const_new();
-pub static USER_SERVICE: OnceCell<UserService> = OnceCell::const_new();
 
 #[derive(Debug)]
 enum MainError {

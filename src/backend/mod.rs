@@ -1,6 +1,7 @@
 use chess::{ChessError, ChessGame, MoveStatus, SanArray};
 use dashmap::{mapref::multiple::RefMutMulti, DashMap};
 use error_stack::{bail, ensure, FutureExt, Result, ResultExt};
+use players::{Player, PlayerPlatform, UpdateBoardError};
 use poise::serenity_prelude::UserId;
 use shakmaty::{san::San, Board, Color, Outcome};
 use skillratings::Outcomes;
@@ -9,10 +10,9 @@ use std::{
     fmt::{self, Debug},
     sync::Arc,
 };
-use users::{Player, PlayerPlatform, UpdateBoardError};
 
 pub mod chess;
-pub mod users;
+pub mod players;
 
 pub const DRAW_OFFER_SAN: &str = "=";
 

@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::{
-    backend::{users::PlayerPlatform, CreateGameError},
+    backend::{players::PlayerPlatform, CreateGameError},
     discord::{
         error::{Arg, Argument, CommandError},
         Context,

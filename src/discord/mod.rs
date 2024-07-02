@@ -7,7 +7,7 @@ use core::fmt;
 use std::{sync::Arc, time::Duration};
 
 use crate::{
-    backend::{users::PlayerPlatform, CreateGameError, ServiceError},
+    backend::{players::PlayerPlatform, CreateGameError, ServiceError},
     BACKEND_SERVICE,
 };
 use error::{Argument, CommandError};

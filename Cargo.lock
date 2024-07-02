@@ -163,6 +163,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "axum-login"
+version = "0.15.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4012877d9672b7902aa6567960208756f68a09de81e988fa18fe369e92f90471"
+dependencies = [
+ "async-trait",
+ "axum",
+ "form_urlencoded",
+ "serde",
+ "subtle",
+ "thiserror",
+ "tower-cookies",
+ "tower-layer",
+ "tower-service",
+ "tower-sessions",
+ "tracing",
+ "urlencoding",
+]
+
+[[package]]
 name = "backtrace"
 version = "0.3.73"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -312,6 +332,7 @@ version = "0.1.0"
 dependencies = [
  "arrayvec",
  "axum",
+ "axum-login",
  "dashmap 6.0.1",
  "dotenvy",
  "error-stack",
@@ -325,6 +346,7 @@ dependencies = [
  "shakmaty",
  "skillratings",
  "sqlx",
+ "time",
  "tokio",
  "tower-http",
  "tower-sessions",
@@ -3255,6 +3277,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5de17fd2f7da591098415cff336e12965a28061ddace43b59cb3c430179c9439"
 dependencies = [
  "getrandom",
+ "serde",
 ]
 
 [[package]]

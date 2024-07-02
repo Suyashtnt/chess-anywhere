@@ -1,15 +1,15 @@
-mod routes;
+mod auth;
+pub mod error;
+pub mod user;
 
 use std::{
     future::{Future, IntoFuture},
     net::SocketAddr,
 };
 
-use axum::{
-    routing::{get, post},
-    Router,
-};
-use error_stack::{FutureExt as ErrorFutureExt, Result};
+use axum::Router;
+use axum_login::AuthManagerLayerBuilder;
+use error_stack::{FutureExt as ErrorFutureExt, Report, Result};
 use poise::serenity_prelude::FutureExt;
 use resend_rs::Resend;
 use tokio::task::JoinHandle;
@@ -32,6 +32,25 @@ pub struct ApiService {
 pub struct ApiState {
     resend: Resend,
     pool: sqlx::postgres::PgPool,
+}
+
+impl ApiState {
+    pub async fn username_exists(&self, username: &str) -> Result<bool, sqlx::Error> {
+        sqlx::query!(
+            "
+            SELECT EXISTS (
+                SELECT 1
+                FROM users
+                WHERE username = $1
+            )
+            ",
+            username
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map(|row| row.exists.is_some_and(|x| x))
+        .map_err(Report::from)
+    }
 }
 
 impl ApiService {
@@ -64,17 +83,17 @@ impl ApiService {
 
             let tracing_layer = TraceLayer::new_for_http();
 
+            let backend = user::Backend::new(task_pool.clone());
+            let auth_layer = AuthManagerLayerBuilder::new(backend, session_layer).build();
+
             let app = Router::new()
-                .route("/email/link", get(routes::link_email))
-                // TODO: get requests to these endpoints for pages
-                .route("/email/login", post(routes::login_email))
-                .route("/email/signup", post(routes::signup_email))
+                .merge(auth::router())
                 .with_state(ApiState {
                     resend,
                     pool: task_pool,
                 })
                 .layer(tracing_layer)
-                .layer(session_layer);
+                .layer(auth_layer);
 
             let addr = SocketAddr::from(([127, 0, 0, 1], port));
             let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();

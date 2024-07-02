@@ -333,6 +333,7 @@ dependencies = [
  "arrayvec",
  "axum",
  "axum-login",
+ "base64 0.22.1",
  "dashmap 6.0.1",
  "dotenvy",
  "error-stack",

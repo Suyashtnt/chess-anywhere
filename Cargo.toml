@@ -37,6 +37,7 @@ tower-sessions-sqlx-store = { version = "0.12.0", features = ["postgres"] }
 tower-http = { version = "0.5.2", features = ["trace", "tracing"] }
 axum-login = "0.15.3"
 time = "0.3.36"
+base64 = "0.22.1"
 
 [profile.dev.package.sqlx-macros]
 opt-level = 3

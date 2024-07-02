@@ -1,5 +1,3 @@
-use std::fmt;
-
 use axum::async_trait;
 use axum_login::{AuthUser, AuthnBackend};
 use uuid::Uuid;
@@ -13,8 +11,6 @@ pub enum Credentials {
         id: Uuid,
         /// The magic link data (AKA entropy garbage)
         data: Vec<u8>,
-        /// The email address
-        email: String,
     },
 }
 
@@ -64,30 +60,61 @@ impl AuthnBackend for Backend {
         credentials: Self::Credentials,
     ) -> Result<Option<Self::User>, Self::Error> {
         match credentials {
-            Credentials::Email { data, id, email } => {
+            Credentials::Email { data, id } => {
                 let record = sqlx::query!(
                     "
-                        SELECT expiry_date, username, email
+                        SELECT expiry_date, username, email, user_id
                         FROM email_verification
                         INNER JOIN users ON email_verification.user_id = users.id
                         WHERE
                             email_verification.id = $1 AND
-                            email_verification.email = $2 AND
-                            email_verification.data = $3 AND
-                            email_verification.expiry_date > NOW()
+                            email_verification.data = $2 AND
+                            email_verification.expiry_date > NOW() AND
+                            email_verification.used = FALSE
                         ",
                     id,
-                    email,
                     data
                 )
                 .fetch_optional(&self.db)
                 .await?;
 
-                Ok(record.map(|record| User {
-                    id,
-                    username: record.username,
-                    login: Some(Credentials::Email { id, data, email }),
-                }))
+                // store in email_login if the record doesn't exist there yet
+                if let Some(record) = record {
+                    let mut transaction = self.db.begin().await?;
+
+                    sqlx::query!(
+                        "
+                            UPDATE email_verification
+                            SET used = TRUE
+                            WHERE id = $1
+                        ",
+                        id
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
+
+                    sqlx::query!(
+                        "
+                            INSERT INTO email_login (email, user_id)
+                            VALUES ($1, $2)
+                            ON CONFLICT (email) DO NOTHING
+                            ",
+                        record.email,
+                        record.user_id
+                    )
+                    .execute(&mut *transaction)
+                    .await?;
+
+                    transaction.commit().await?;
+
+                    Ok(Some(User {
+                        id,
+                        username: record.username,
+                        login: Some(Credentials::Email { id, data }),
+                    }))
+                } else {
+                    Ok(None)
+                }
             }
         }
     }

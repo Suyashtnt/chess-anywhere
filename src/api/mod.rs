@@ -2,6 +2,9 @@ mod auth;
 pub mod error;
 pub mod user;
 
+use base64::prelude::*;
+use core::fmt;
+use skillratings::glicko2::Glicko2Rating;
 use std::{
     future::{Future, IntoFuture},
     net::SocketAddr,
@@ -11,21 +14,22 @@ use axum::Router;
 use axum_login::AuthManagerLayerBuilder;
 use error_stack::{FutureExt as ErrorFutureExt, Report, Result};
 use poise::serenity_prelude::FutureExt;
-use resend_rs::Resend;
+use resend_rs::{types::CreateEmailBaseOptions, Resend};
 use tokio::task::JoinHandle;
 use tower_http::trace::TraceLayer;
 use tower_sessions::{
     cookie::time::Duration, session_store::ExpiredDeletion, Expiry, SessionManagerLayer,
 };
 use tower_sessions_sqlx_store::PostgresStore;
+use uuid::Uuid;
 
 use crate::backend::ServiceError;
 
 /// An axum server exposing ways to play chess through an API
 #[derive(Debug, Clone)]
 pub struct ApiService {
-    pool: sqlx::postgres::PgPool,
     session_store: PostgresStore,
+    state: ApiState,
 }
 
 #[derive(Debug, Clone)]
@@ -34,22 +38,127 @@ pub struct ApiState {
     pool: sqlx::postgres::PgPool,
 }
 
+#[derive(Debug)]
+pub enum EmailError {
+    SqlxError,
+    ResendError,
+}
+
+impl fmt::Display for EmailError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::SqlxError => f.write_str("SQLx error"),
+            Self::ResendError => f.write_str("Resend error"),
+        }
+    }
+}
+
+impl std::error::Error for EmailError {}
+
 impl ApiState {
-    pub async fn username_exists(&self, username: &str) -> Result<bool, sqlx::Error> {
+    pub async fn get_userid_by_username(
+        &self,
+        username: &str,
+    ) -> Result<Option<Uuid>, sqlx::Error> {
         sqlx::query!(
             "
-            SELECT EXISTS (
-                SELECT 1
+                SELECT id
                 FROM users
                 WHERE username = $1
-            )
             ",
             username
         )
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await
-        .map(|row| row.exists.is_some_and(|x| x))
         .map_err(Report::from)
+        .map(|row| row.map(|row| row.id))
+    }
+
+    pub async fn get_userid_by_email(&self, email: &str) -> Result<Option<Uuid>, sqlx::Error> {
+        sqlx::query!(
+            "
+                SELECT user_id
+                FROM email_login
+                WHERE email = $1
+            ",
+            email
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(Report::from)
+        .map(|row| row.map(|row| row.user_id))
+    }
+
+    pub async fn create_user(&self, username: &str) -> Result<Uuid, sqlx::Error> {
+        let user_id = Uuid::new_v4();
+
+        let Glicko2Rating {
+            deviation,
+            rating,
+            volatility,
+        } = Glicko2Rating::new();
+
+        sqlx::query!(
+            "
+            INSERT INTO users (id, username, elo_rating, elo_deviation, elo_volatility)
+            VALUES ($1, $2, $3, $4, $5)
+            ",
+            user_id,
+            username,
+            rating,
+            deviation,
+            volatility
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(user_id)
+    }
+
+    pub async fn send_magic_email(&self, email: &str, user_id: Uuid) -> Result<(), EmailError> {
+        let entropy: Vec<u8> = (0..32).map(|_| rand::random()).collect();
+
+        // convert entropy into a string
+        let entropy_str = BASE64_URL_SAFE.encode(&entropy);
+
+        let email_id = sqlx::query!(
+            "
+            INSERT INTO email_verification (user_id, email, data, expiry_date)
+            VALUES ($1, $2, $3, NOW() + INTERVAL '1 day')
+            RETURNING id
+            ",
+            user_id,
+            email,
+            entropy
+        )
+        .fetch_one(&self.pool)
+        .change_context(EmailError::SqlxError)
+        .await?
+        .id;
+
+        // TODO: proper email templating
+        let body = format!(
+            "
+            Click the following link to log in:
+            https://chess-anywhere.wobbl.in/email/link?id={}&entropy={}
+            ",
+            email_id, entropy_str
+        );
+
+        let email = CreateEmailBaseOptions::new(
+            "no-reply@chess-anywhere.wobbl.in",
+            [email],
+            "Login to Chess Anywhere",
+        )
+        .with_text(&body);
+
+        self.resend
+            .emails
+            .send(email)
+            .change_context(EmailError::ResendError)
+            .await?;
+
+        Ok(())
     }
 }
 
@@ -68,8 +177,15 @@ impl ApiService {
         let session_store = PostgresStore::new(pool.clone());
         session_store.migrate().await?;
 
+        let api_state = ApiState {
+            resend,
+            pool: pool.clone(),
+        };
+
         let task_session_store = session_store.clone();
         let task_pool = pool.clone();
+        let task_api_state = api_state.clone();
+
         let task = tokio::task::spawn(async move {
             let deletion_task = tokio::task::spawn(
                 task_session_store
@@ -88,10 +204,7 @@ impl ApiService {
 
             let app = Router::new()
                 .merge(auth::router())
-                .with_state(ApiState {
-                    resend,
-                    pool: task_pool,
-                })
+                .with_state(task_api_state)
                 .layer(tracing_layer)
                 .layer(auth_layer);
 
@@ -109,8 +222,8 @@ impl ApiService {
 
         Ok((
             Self {
-                pool,
                 session_store,
+                state: api_state,
             },
             task,
         ))

@@ -6,6 +6,7 @@ mod user;
 use aide::{
     axum::{routing::get, IntoApiResponse, RouterExt},
     openapi::{Info, OpenApi},
+    scalar::Scalar,
 };
 use base64::prelude::*;
 use core::fmt;
@@ -20,7 +21,7 @@ use error_stack::{FutureExt as ErrorFutureExt, Report, Result};
 use poise::serenity_prelude::FutureExt;
 use resend_rs::{types::CreateEmailBaseOptions, Resend};
 use tokio::task::JoinHandle;
-use tower_http::trace::TraceLayer;
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tower_sessions::{
     cookie::time::Duration, session_store::ExpiredDeletion, Expiry, SessionManagerLayer,
 };
@@ -169,9 +170,11 @@ impl ApiService {
             let auth_layer = AuthManagerLayerBuilder::new(backend, session_layer).build();
 
             let app = Router::new()
+                .api_route("/api.json", get(serve_api))
+                .api_route("/api", Scalar::new("/api.json").axum_route())
+                .layer(CorsLayer::permissive())
                 .merge(auth::router())
                 .merge(user::router())
-                .api_route("/api.json", get(serve_api))
                 .with_state(task_api_state)
                 .layer(tracing_layer)
                 .layer(auth_layer);

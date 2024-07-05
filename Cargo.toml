@@ -27,13 +27,14 @@ resend-rs = { version = "0.7.0", default-features = false, features = [
 axum = { version = "0.7.5", features = ["http2", "json"] }
 tower-sessions = "0.12.2"
 tower-sessions-sqlx-store = { version = "0.12.0", features = ["sqlite"] }
-tower-http = { version = "0.5.2", features = ["trace", "tracing"] }
+tower-http = { version = "0.5.2", features = ["cors", "trace", "tracing"] }
 axum-login = "0.15.3"
 time = "0.3.36"
 base64 = "0.22.1"
 axum-extra = { version = "0.9.3", features = ["cookie"] }
-aide = { version = "0.13.4", features = ["axum"] }
+aide = { version = "0.13.4", features = ["axum", "axum-extra-query", "scalar"] }
 schemars = "0.8.21"
+indexmap = "2.2.6"
 
 [profile.dev.package.sqlx-macros]
 opt-level = 3

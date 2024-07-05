@@ -1,6 +1,14 @@
-use std::fmt;
+use std::{
+    fmt,
+    ops::{Deref, DerefMut},
+};
 
-use axum::async_trait;
+use aide::OperationInput;
+use axum::{
+    async_trait,
+    extract::FromRequestParts,
+    http::{request::Parts, StatusCode},
+};
 use axum_login::{AuthUser, AuthnBackend};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -191,4 +199,49 @@ impl AuthnBackend for Backend {
     }
 }
 
-pub type AuthSession = axum_login::AuthSession<Backend>;
+pub type InnerAuthSession = axum_login::AuthSession<Backend>;
+
+pub struct AuthSession(axum_login::AuthSession<Backend>);
+
+#[async_trait]
+impl<S> FromRequestParts<S> for AuthSession
+where
+    S: Send + Sync,
+    Backend: AuthnBackend + Send + Sync + 'static,
+{
+    type Rejection = (StatusCode, &'static str);
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        parts
+            .extensions
+            .get::<axum_login::AuthSession<_>>()
+            .cloned()
+            .ok_or((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Can't extract auth session. Is `AuthManagerLayer` enabled?",
+            ))
+            .map(AuthSession)
+    }
+}
+
+impl OperationInput for AuthSession {}
+
+impl From<AuthSession> for InnerAuthSession {
+    fn from(session: AuthSession) -> Self {
+        session.0
+    }
+}
+
+impl Deref for AuthSession {
+    type Target = axum_login::AuthSession<Backend>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for AuthSession {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}

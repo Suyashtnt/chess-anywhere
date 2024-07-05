@@ -1,25 +1,43 @@
 use std::fmt;
 
-use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
+use aide::axum::{routing::get_with, ApiRouter, RouterExt};
+use axum::{extract::State, http::StatusCode, Json, Router};
 use axum_login::AuthUser;
 use error_stack::{report, FutureExt};
+use schemars::JsonSchema;
 use serde::Serialize;
 
-use super::{error::AxumReport, session::AuthSession, ApiState};
+use super::{
+    error::AxumReport,
+    session::{AuthSession, InnerAuthSession},
+    ApiState,
+};
 
-pub fn router() -> Router<ApiState> {
-    Router::new().route("/user/stats", get(stats))
+pub fn router() -> ApiRouter<ApiState> {
+    Router::new().api_route(
+        "/user/stats",
+        get_with(stats, |op| {
+            op.description("Get the stats of the logged in user")
+                .security_requirement("Requires user login")
+                .response::<401, Json<StatsError>>()
+                .response::<500, Json<StatsError>>()
+                .response::<200, Json<StatsResponse>>()
+        }),
+    )
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, JsonSchema)]
 struct StatsResponse {
     username: String,
     elo: f64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, JsonSchema)]
+/// Error response for the stats endpoint
 enum StatsError {
+    /// You need to login to see your stats
     Unauthorized,
+    /// Internal Backend error
     BackendError,
 }
 
@@ -38,7 +56,7 @@ async fn stats(
     State(state): State<ApiState>,
     session: AuthSession,
 ) -> Result<Json<StatsResponse>, AxumReport<StatsError>> {
-    let user = session.user.ok_or(AxumReport::new(
+    let user = InnerAuthSession::from(session).user.ok_or(AxumReport::new(
         StatusCode::UNAUTHORIZED,
         report!(StatsError::Unauthorized),
     ))?;

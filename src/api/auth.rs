@@ -1,10 +1,12 @@
 use std::fmt;
 
+use aide::axum::{
+    routing::{get, get_with, post, post_with},
+    ApiRouter, RouterExt,
+};
 use axum::{
     extract::{Query, State},
     http::StatusCode,
-    response::IntoResponse,
-    routing::{get, post},
     Json, Router,
 };
 use base64::prelude::*;
@@ -18,12 +20,27 @@ use super::{
     ApiState,
 };
 
-pub fn router() -> Router<ApiState> {
+pub fn router() -> ApiRouter<ApiState> {
     Router::new()
-        .route("/email/link", get(link_email))
+        .api_route(
+            "/email/link",
+            get_with(link_email, |op| {
+                op.description(
+                    "Link an email to a user account. This is a link sent to the user's email.",
+                )
+                .response::<401, Json<AuthError>>()
+                .response::<500, Json<AuthError>>()
+            }),
+        )
         // TODO: get requests to these endpoints for pages
-        .route("/email/login", post(login_email))
-        .route("/email/signup", post(signup_email))
+        .api_route("/email/login", post_with(login_email, |op|
+            op.description("Starts the login process for a user with an email. They will receive a magic link in their email.")
+                .response::<500, Json<AuthError>>()
+        ))
+        .api_route("/email/signup", post_with(signup_email, |op|
+            op.description("Starts the signup process for a user with an email. They will receive a magic link in their email.")
+                .response::<500, Json<AuthError>>()
+        ))
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -54,8 +71,11 @@ struct EmailLink {
 }
 
 #[derive(Debug, JsonSchema)]
+/// Error response for the authorization endpoints
 enum AuthError {
+    /// The email magic link is invalid. Could be expired or tampered with
     InvalidLink,
+    /// Internal Backend error
     BackendError,
 }
 
@@ -130,7 +150,7 @@ async fn signup_email(
 async fn link_email(
     mut session: AuthSession,
     Query(EmailLink { id, entropy }): Query<EmailLink>,
-) -> Result<impl IntoResponse, AxumReport<AuthError>> {
+) -> Result<&'static str, AxumReport<AuthError>> {
     let data = BASE64_URL_SAFE.decode(entropy.as_bytes()).unwrap();
 
     let credentials = Credentials::Email { id, data };

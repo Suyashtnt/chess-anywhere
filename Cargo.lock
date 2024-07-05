@@ -46,6 +46,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7b0e3b97a21e41ec5c19bfd9b4fc1f7086be104f8b988681230247ffc91cc8ed"
 dependencies = [
  "axum",
+ "axum-extra",
  "bytes",
  "cfg-if",
  "http 1.1.0",
@@ -200,6 +201,7 @@ dependencies = [
  "mime",
  "pin-project-lite",
  "serde",
+ "serde_html_form",
  "tower",
  "tower-layer",
  "tower-service",
@@ -372,6 +374,7 @@ dependencies = [
  "dashmap 6.0.1",
  "dotenvy",
  "error-stack",
+ "indexmap",
  "menv",
  "poise",
  "rand",
@@ -2292,6 +2295,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.68",
+]
+
+[[package]]
+name = "serde_html_form"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8de514ef58196f1fc96dcaef80fe6170a1ce6215df9687a93fe8300e773fefc5"
+dependencies = [
+ "form_urlencoded",
+ "indexmap",
+ "itoa",
+ "ryu",
+ "serde",
 ]
 
 [[package]]

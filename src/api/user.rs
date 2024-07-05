@@ -30,7 +30,7 @@ pub fn router() -> ApiRouter<ApiState> {
                 .security_requirement("Requires user login")
                 .response::<401, Json<StatsError>>()
                 .response::<500, Json<StatsError>>()
-                .response::<200, Json<StatsResponse>>()
+                .response::<200, Json<PrivateStatsResponse>>()
             }),
         )
         .api_route(

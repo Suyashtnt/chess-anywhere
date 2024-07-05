@@ -1,9 +1,7 @@
 use std::{fmt, hash::Hash, sync::Arc};
 
 use error_stack::{FutureExt, Result};
-use poise::serenity_prelude::{
-    CreateMessage, EditMessage, Http, Mentionable, Message, User as DiscordUser,
-};
+use poise::serenity_prelude::{EditMessage, Http, Message, User as DiscordUser};
 use shakmaty::{Board, Color};
 use skillratings::{
     glicko2::{glicko2, Glicko2Config, Glicko2Rating},

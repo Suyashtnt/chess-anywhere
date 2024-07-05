@@ -7,6 +7,7 @@ use api::ApiService;
 use backend::BackendService;
 use discord::DiscordBotService;
 use error_stack::{bail, FutureExt, Result, ResultExt};
+use sqlx::SqlitePool;
 use std::fmt;
 use tokio::{select, sync::OnceCell};
 use tracing::{error, info};
@@ -68,21 +69,20 @@ async fn main() -> Result<(), MainError> {
     tracing::subscriber::set_global_default(subscriber).change_context(MainError::LogError)?;
 
     // initialize services
-
-    let pg_pool = sqlx::PgPool::connect(&env::database_url())
-        .change_context(MainError::ServiceError)
-        .await?;
+    let pool = SqlitePool::connect(&env::database_url())
+        .await
+        .change_context(MainError::ServiceError)?;
 
     BACKEND_SERVICE
         .set(
-            BackendService::new(pg_pool.clone())
+            BackendService::new(pool.clone())
                 .await
                 .attach_printable("Failed to initialize backend service")
                 .change_context(MainError::ServiceError)?,
         )
         .unwrap();
 
-    let (bot_service, bot_task) = DiscordBotService::start(env::discord_token(), pg_pool.clone())
+    let (bot_service, bot_task) = DiscordBotService::start(env::discord_token(), pool.clone())
         .change_context(MainError::ServiceError)
         .await?;
 
@@ -90,7 +90,7 @@ async fn main() -> Result<(), MainError> {
 
     let (api_service, api_task) = ApiService::start(
         &env::resend_api_key(),
-        pg_pool.clone(),
+        pool.clone(),
         async {
             select! {
                 _ = bot_task => (),

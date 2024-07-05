@@ -10,7 +10,6 @@ use axum::{
 use base64::prelude::*;
 use error_stack::{report, FutureExt};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use super::{
     error::AxumReport,
@@ -39,7 +38,7 @@ struct EmailSignup {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct EmailLink {
-    id: Uuid,
+    id: i64,
     entropy: String,
 }
 

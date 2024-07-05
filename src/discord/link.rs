@@ -34,10 +34,13 @@ pub async fn email(ctx: ApplicationContext<'_>) -> Result<(), CommandError> {
         .await?
     else {
         return ctx
-            .send(
-                CreateReply::default()
-                    .content("You didn't respond!")
-                    .ephemeral(true),
+            .author()
+            .create_dm_channel(ctx.http())
+            .change_context_lazy(&error)
+            .await?
+            .send_message(
+                ctx.http(),
+                CreateMessage::default().content("You didn't respond to the modal!"),
             )
             .change_context_lazy(error)
             .await

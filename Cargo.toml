@@ -4,17 +4,10 @@ edition = "2021"
 version = "0.1.0"
 
 [dependencies]
-sqlx = { version = "0.7", features = [
-    "runtime-tokio",
-    "tls-rustls",
-    "postgres",
-    "uuid",
-    "bigdecimal",
-] }
+sqlx = { version = "0.7", features = ["runtime-tokio", "tls-rustls", "sqlite"] }
 replace_with = "0.1.7"
 arrayvec = { version = "0.7.4", features = ["serde"] }
 dashmap = "6.0.1"
-uuid = { version = "1.9.1", features = ["serde", "v4"] }
 skillratings = "0.27.0"
 error-stack = { version = "0.4.1", features = ["spantrace", "serde"] }
 shakmaty = "0.27.0"
@@ -28,12 +21,12 @@ menv = "0.2.7"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 rand = "0.8.5"
 veil = "0.1.7"
-resend-rs = { version = "0.6.0", default-features = false, features = [
+resend-rs = { version = "0.7.0", default-features = false, features = [
     "rustls-tls",
 ] }
 axum = { version = "0.7.5", features = ["http2", "json"] }
 tower-sessions = "0.12.2"
-tower-sessions-sqlx-store = { version = "0.12.0", features = ["postgres"] }
+tower-sessions-sqlx-store = { version = "0.12.0", features = ["sqlite"] }
 tower-http = { version = "0.5.2", features = ["trace", "tracing"] }
 axum-login = "0.15.3"
 time = "0.3.36"

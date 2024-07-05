@@ -19,15 +19,14 @@ use tower_http::trace::TraceLayer;
 use tower_sessions::{
     cookie::time::Duration, session_store::ExpiredDeletion, Expiry, SessionManagerLayer,
 };
-use tower_sessions_sqlx_store::PostgresStore;
-use uuid::Uuid;
+use tower_sessions_sqlx_store::SqliteStore;
 
 use crate::{backend::ServiceError, users::UserService};
 
 /// An axum server exposing ways to play chess through an API
 #[derive(Debug, Clone)]
 pub struct ApiService {
-    session_store: PostgresStore,
+    session_store: SqliteStore,
     pub state: ApiState,
 }
 
@@ -35,7 +34,7 @@ pub struct ApiService {
 /// A more direct API to the database and email sending
 pub struct ApiState {
     resend: Resend,
-    pool: sqlx::PgPool,
+    pool: sqlx::SqlitePool,
 }
 
 #[derive(Debug)]
@@ -56,30 +55,27 @@ impl fmt::Display for EmailError {
 impl std::error::Error for EmailError {}
 
 impl ApiState {
-    pub async fn get_userid_by_username(
-        &self,
-        username: &str,
-    ) -> Result<Option<Uuid>, sqlx::Error> {
+    pub async fn get_userid_by_username(&self, username: &str) -> Result<Option<i64>, sqlx::Error> {
         UserService::fetch_user_by_username(username, &self.pool)
             .await
             .map_err(Report::from)
             .map(|row| row.map(|row| row.id()))
     }
 
-    pub async fn get_userid_by_email(&self, email: &str) -> Result<Option<Uuid>, sqlx::Error> {
+    pub async fn get_userid_by_email(&self, email: &str) -> Result<Option<i64>, sqlx::Error> {
         UserService::fetch_user_by_email(email, &self.pool)
             .await
             .map_err(Report::from)
             .map(|row| row.map(|row| row.id()))
     }
 
-    pub async fn add_user(&self, username: &str) -> Result<Uuid, sqlx::Error> {
+    pub async fn add_user(&self, username: &str) -> Result<i64, sqlx::Error> {
         UserService::create(username, &self.pool)
             .await
             .map(|row| row.id())
     }
 
-    pub async fn send_magic_email(&self, email: &str, user_id: Uuid) -> Result<(), EmailError> {
+    pub async fn send_magic_email(&self, email: &str, user_id: i64) -> Result<(), EmailError> {
         // silently ignore if email already exists
         if self
             .get_userid_by_email(&email)
@@ -128,7 +124,7 @@ impl ApiState {
 impl ApiService {
     pub async fn start<F>(
         resend_api_key: &str,
-        pool: sqlx::PgPool,
+        pool: sqlx::SqlitePool,
         shutdown_signal: F,
         port: u16,
     ) -> Result<(Self, JoinHandle<Result<(), ServiceError>>), sqlx::Error>
@@ -137,7 +133,7 @@ impl ApiService {
     {
         let resend = Resend::new(resend_api_key);
 
-        let session_store = PostgresStore::new(pool.clone());
+        let session_store = SqliteStore::new(pool.clone());
         session_store.migrate().await?;
 
         let api_state = ApiState {

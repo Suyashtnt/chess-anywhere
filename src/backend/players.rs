@@ -9,8 +9,7 @@ use skillratings::{
     glicko2::{glicko2, Glicko2Config, Glicko2Rating},
     Outcomes,
 };
-use sqlx::PgPool;
-use uuid::Uuid;
+use sqlx::SqlitePool;
 
 use crate::{
     backend::chess::MoveStatus,
@@ -49,7 +48,7 @@ impl Player {
     /// Gets a user from the database based on their current platform
     pub async fn fetch(
         platform: PlayerPlatform,
-        pool: &PgPool,
+        pool: &SqlitePool,
     ) -> Result<Option<Self>, sqlx::Error> {
         match platform {
             PlayerPlatform::Discord { ref user, .. } => {
@@ -68,7 +67,7 @@ impl Player {
     /// Gets a user from the database based on their current platform,
     /// or creates them if they're not in the database
     /// using the provided closure to create the user
-    pub async fn upsert(platform: PlayerPlatform, pool: &PgPool) -> Result<Self, sqlx::Error> {
+    pub async fn upsert(platform: PlayerPlatform, pool: &SqlitePool) -> Result<Self, sqlx::Error> {
         match Self::fetch(platform.clone(), pool).await? {
             Some(user) => Ok(user),
             None => Self::create(platform, pool).await,
@@ -76,7 +75,7 @@ impl Player {
     }
 
     /// Creates a new user in the database
-    pub async fn create(platform: PlayerPlatform, pool: &PgPool) -> Result<Self, sqlx::Error> {
+    pub async fn create(platform: PlayerPlatform, pool: &SqlitePool) -> Result<Self, sqlx::Error> {
         match platform {
             PlayerPlatform::Discord {
                 user: ref discord_user,
@@ -104,7 +103,7 @@ impl Player {
         &mut self,
         black: &mut Player,
         outcome: Outcomes,
-        pool: &PgPool,
+        pool: &SqlitePool,
     ) -> Result<(), sqlx::Error> {
         let config = Glicko2Config::default();
         let (new_self, new_other) = glicko2(&self.elo(), &black.elo(), &outcome, &config);
@@ -171,7 +170,7 @@ impl Player {
         self.user.username()
     }
 
-    pub fn id(&self) -> Uuid {
+    pub fn id(&self) -> i64 {
         self.user.id()
     }
 

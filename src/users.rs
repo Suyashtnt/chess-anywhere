@@ -3,15 +3,14 @@
 use error_stack::Result;
 use poise::serenity_prelude::UserId;
 use skillratings::glicko2::Glicko2Rating;
-use sqlx::{types::BigDecimal, Executor, Postgres};
-use uuid::Uuid;
+use sqlx::{Executor, Sqlite};
 
 #[derive(Debug)]
 pub struct UserService;
 impl UserService {
     pub async fn fetch_user_by_id(
-        id: Uuid,
-        executor: impl Executor<'_, Database = Postgres>,
+        id: i64,
+        executor: impl Executor<'_, Database = Sqlite>,
     ) -> Result<Option<User>, sqlx::Error> {
         sqlx::query_as!(
             RawUser,
@@ -30,7 +29,7 @@ impl UserService {
 
     pub async fn fetch_user_by_username(
         username: &str,
-        executor: impl Executor<'_, Database = Postgres>,
+        executor: impl Executor<'_, Database = Sqlite>,
     ) -> Result<Option<User>, sqlx::Error> {
         sqlx::query_as!(
             RawUser,
@@ -49,7 +48,7 @@ impl UserService {
 
     pub async fn fetch_user_by_email(
         email: &str,
-        executor: impl Executor<'_, Database = Postgres>,
+        executor: impl Executor<'_, Database = Sqlite>,
     ) -> Result<Option<User>, sqlx::Error> {
         sqlx::query_as!(
             RawUser,
@@ -70,9 +69,9 @@ impl UserService {
 
     pub async fn fetch_user_by_discord_id(
         id: UserId,
-        executor: impl Executor<'_, Database = Postgres>,
+        executor: impl Executor<'_, Database = Sqlite>,
     ) -> Result<Option<User>, sqlx::Error> {
-        let id = BigDecimal::from(id.get());
+        let id = id.get() as i64;
         sqlx::query_as!(
             RawUser,
             "
@@ -91,8 +90,8 @@ impl UserService {
     }
 
     pub async fn delete_user(
-        id: Uuid,
-        executor: impl Executor<'_, Database = Postgres>,
+        id: i64,
+        executor: impl Executor<'_, Database = Sqlite>,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
             "
@@ -109,7 +108,7 @@ impl UserService {
 
     pub async fn create(
         username: &str,
-        executor: impl Executor<'_, Database = Postgres>,
+        executor: impl Executor<'_, Database = Sqlite>,
     ) -> Result<User, sqlx::Error> {
         let Glicko2Rating {
             deviation,
@@ -138,16 +137,17 @@ impl UserService {
     async fn attach_discord_id(
         user: &User,
         discord_id: UserId,
-        executor: impl Executor<'_, Database = Postgres>,
+        executor: impl Executor<'_, Database = Sqlite>,
     ) -> Result<(), sqlx::Error> {
-        let id = BigDecimal::from(discord_id.get());
+        let id = discord_id.get() as i64;
+        let user_id = user.id();
         sqlx::query!(
             "
             INSERT INTO discord_id (discord_id, user_id)
             VALUES ($1, $2)
             ",
             id,
-            user.id()
+            user_id
         )
         .execute(executor)
         .await
@@ -156,9 +156,9 @@ impl UserService {
     }
 
     async fn update_elo(
-        user_id: Uuid,
+        user_id: i64,
         elo: Glicko2Rating,
-        executor: impl Executor<'_, Database = Postgres>,
+        executor: impl Executor<'_, Database = Sqlite>,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
             "
@@ -178,15 +178,15 @@ impl UserService {
     }
 
     pub async fn add_email_verification(
-        user_id: Uuid,
+        user_id: i64,
         email: &str,
         data: &[u8],
-        executor: impl Executor<'_, Database = Postgres>,
-    ) -> Result<Uuid, sqlx::Error> {
+        executor: impl Executor<'_, Database = Sqlite>,
+    ) -> Result<i64, sqlx::Error> {
         sqlx::query!(
             "
             INSERT INTO email_verification (user_id, email, data, expiry_date)
-            VALUES ($1, $2, $3, NOW() + INTERVAL '1 day')
+            VALUES ($1, $2, $3, datetime('now', '+1 day'))
             RETURNING id
             ",
             user_id,
@@ -202,10 +202,10 @@ impl UserService {
 
 #[derive(Debug, Clone)]
 pub struct User {
-    /// UUID of the player
+    /// ID of the player
     ///
     /// Unique
-    id: Uuid,
+    id: i64,
     /// The username of the player
     ///
     /// Unique
@@ -216,12 +216,12 @@ pub struct User {
 
 impl User {
     #[must_use]
-    pub const fn new_with_rating(id: Uuid, username: String, elo: Glicko2Rating) -> Self {
+    pub const fn new_with_rating(id: i64, username: String, elo: Glicko2Rating) -> Self {
         Self { id, username, elo }
     }
 
     #[must_use]
-    pub const fn id(&self) -> Uuid {
+    pub const fn id(&self) -> i64 {
         self.id
     }
 
@@ -238,7 +238,7 @@ impl User {
     pub async fn update_elo(
         &mut self,
         new_elo: Glicko2Rating,
-        executor: impl Executor<'_, Database = Postgres>,
+        executor: impl Executor<'_, Database = Sqlite>,
     ) -> Result<(), sqlx::Error> {
         self.elo = new_elo;
         UserService::update_elo(self.id, new_elo, executor).await
@@ -247,7 +247,7 @@ impl User {
     pub async fn attach_discord_id(
         &self,
         discord_id: UserId,
-        executor: impl Executor<'_, Database = Postgres>,
+        executor: impl Executor<'_, Database = Sqlite>,
     ) -> Result<(), sqlx::Error> {
         UserService::attach_discord_id(self, discord_id, executor).await
     }
@@ -255,7 +255,7 @@ impl User {
 
 /// A raw user from the database, intended to be immediately converted into a User
 pub struct RawUser {
-    pub id: Uuid,
+    pub id: i64,
     pub username: String,
     pub elo_rating: f64,
     pub elo_deviation: f64,

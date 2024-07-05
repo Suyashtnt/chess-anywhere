@@ -1,6 +1,5 @@
 use axum::async_trait;
 use axum_login::{AuthUser, AuthnBackend};
-use uuid::Uuid;
 use veil::Redact;
 
 #[derive(Debug, Clone)]
@@ -8,7 +7,7 @@ pub enum Credentials {
     /// Logged in via an email magic link
     Email {
         /// The magic link id
-        id: Uuid,
+        id: i64,
         /// The magic link data (AKA entropy garbage)
         data: Vec<u8>,
     },
@@ -17,14 +16,14 @@ pub enum Credentials {
 /// A logged in user to the web API
 #[derive(Redact, Clone)]
 pub struct User {
-    id: Uuid,
+    id: i64,
     username: String,
     #[redact]
     login: Option<Credentials>,
 }
 
 impl AuthUser for User {
-    type Id = Uuid;
+    type Id = i64;
 
     fn id(&self) -> Self::Id {
         self.id
@@ -40,11 +39,11 @@ impl AuthUser for User {
 
 #[derive(Debug, Clone)]
 pub struct Backend {
-    db: sqlx::PgPool,
+    db: sqlx::SqlitePool,
 }
 
 impl Backend {
-    pub fn new(db: sqlx::PgPool) -> Self {
+    pub fn new(db: sqlx::SqlitePool) -> Self {
         Self { db }
     }
 }
@@ -62,6 +61,7 @@ impl AuthnBackend for Backend {
         match credentials {
             Credentials::Email { data, id } => {
                 let record = sqlx::query!(
+                    // sqlite
                     "
                         SELECT expiry_date, username, email, user_id
                         FROM email_verification
@@ -69,7 +69,7 @@ impl AuthnBackend for Backend {
                         WHERE
                             email_verification.id = $1 AND
                             email_verification.data = $2 AND
-                            email_verification.expiry_date > NOW() AND
+                            date(email_verification.expiry_date) >= date('now') AND
                             email_verification.used = FALSE
                         ",
                     id,

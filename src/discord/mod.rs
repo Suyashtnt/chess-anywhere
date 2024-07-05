@@ -37,7 +37,7 @@ impl fmt::Debug for DiscordBotService {
 impl DiscordBotService {
     pub async fn start(
         token: String,
-        pool: sqlx::PgPool,
+        pool: sqlx::SqlitePool,
     ) -> Result<(Self, JoinHandle<Result<(), ServiceError>>), ServiceError> {
         let intents = serenity::GatewayIntents::non_privileged();
 
@@ -221,7 +221,7 @@ impl DiscordBotService {
 
 #[derive(Debug)]
 pub(crate) struct DiscordState {
-    pool: sqlx::PgPool,
+    pool: sqlx::SqlitePool,
 }
 
 pub(crate) type Error = Report<CommandError>;

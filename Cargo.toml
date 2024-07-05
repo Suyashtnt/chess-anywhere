@@ -24,7 +24,7 @@ veil = "0.1.7"
 resend-rs = { version = "0.7.0", default-features = false, features = [
     "rustls-tls",
 ] }
-axum = { version = "0.7.5", features = ["http2", "json"] }
+axum = { version = "0.7.5", features = ["http2", "json", "macros"] }
 tower-sessions = "0.12.2"
 tower-sessions-sqlx-store = { version = "0.12.0", features = ["sqlite"] }
 tower-http = { version = "0.5.2", features = ["cors", "trace", "tracing"] }

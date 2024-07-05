@@ -12,6 +12,7 @@ pub type SanArray = ArrayVec<String, 256>;
 #[derive(Debug)]
 /// Lightweight wrapper around the shakmaty Chess board
 pub(super) struct ChessGame {
+    id: i64,
     game: Chess,
     draw_offer: Option<Color>,
 }
@@ -40,10 +41,11 @@ impl fmt::Display for ChessError {
 impl Error for ChessError {}
 
 impl ChessGame {
-    pub fn new() -> Self {
+    pub fn new(id: i64) -> Self {
         Self {
             game: Chess::default(),
             draw_offer: None,
+            id,
         }
     }
 
@@ -122,6 +124,16 @@ impl ChessGame {
     /// Gets the current board
     pub fn board(&self) -> &Board {
         self.game.board()
+    }
+
+    /// Gets the board position itself
+    pub fn position(&self) -> &Chess {
+        &self.game
+    }
+
+    /// Gets the game ID
+    pub fn id(&self) -> i64 {
+        self.id
     }
 }
 

@@ -24,12 +24,17 @@ pub enum PlayerPlatform {
         game_message: Message,
         http: Arc<Http>,
     },
+    WebApi {
+        user_id: i64,
+    },
 }
 
 impl PartialEq for PlayerPlatform {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Discord { user: a, .. }, Self::Discord { user: b, .. }) => a == b,
+            (Self::WebApi { user_id: a }, Self::WebApi { user_id: b }) => a == b,
+            _ => false,
         }
     }
 }
@@ -61,6 +66,14 @@ impl Player {
                         })
                     })
             }
+            PlayerPlatform::WebApi { user_id } => UserService::fetch_user_by_id(user_id, pool)
+                .await
+                .map(|row| {
+                    row.map(|row| Self {
+                        user: row.into(),
+                        platform,
+                    })
+                }),
         }
     }
 
@@ -90,6 +103,10 @@ impl Player {
                 transaction.commit().await?;
 
                 Ok(Self { user, platform })
+            }
+            // how the hell would one create the user by starting the game... and provide an arbitrary user_id?
+            PlayerPlatform::WebApi { .. } => {
+                unreachable!("Cannot create a user from a WebApi")
             }
         }
     }
@@ -146,6 +163,9 @@ impl Player {
                     .change_context(UpdateBoardError::DiscordError)
                     .await
             }
+            PlayerPlatform::WebApi { user_id } => {
+                todo!("Implement sending an event for WebApi players via the API service")
+            }
         }
     }
 
@@ -168,6 +188,7 @@ impl Player {
 
 #[derive(Debug)]
 pub enum UpdateBoardError {
+    DatabaseError,
     DiscordError,
 }
 
@@ -175,6 +196,7 @@ impl fmt::Display for UpdateBoardError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::DiscordError => f.write_str("Failed to update the board on Discord"),
+            Self::DatabaseError => f.write_str("Failed to update the board in the database"),
         }
     }
 }

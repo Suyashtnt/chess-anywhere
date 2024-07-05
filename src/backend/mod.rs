@@ -3,7 +3,7 @@ use dashmap::{mapref::multiple::RefMutMulti, DashMap};
 use error_stack::{bail, ensure, FutureExt, Result, ResultExt};
 use players::{Player, PlayerPlatform, UpdateBoardError};
 use poise::serenity_prelude::UserId;
-use shakmaty::{san::San, Board, Color, Outcome};
+use shakmaty::{san::San, Board, Chess, Color, Outcome};
 use skillratings::Outcomes;
 use std::{
     error::Error,
@@ -67,11 +67,13 @@ type Game<'a> = RefMutMulti<'a, (Player, Player), ChessGame>;
 
 #[derive(Debug)]
 pub(crate) struct GameInfo<'a> {
+    pub id: i64,
     pub white: &'a mut Player,
     pub black: &'a mut Player,
     pub last_move: &'a MoveStatus,
     pub last_player: Color,
     pub board: &'a Board,
+    pub position: &'a Chess,
 }
 
 impl BackendService {
@@ -118,17 +120,35 @@ impl BackendService {
             );
         }
 
-        let game = ChessGame::new();
+        let white_id = user_tuple.0.id();
+        let black_id = user_tuple.1.id();
+
+        let game_id = sqlx::query!(
+            "
+            INSERT INTO games (white_id, black_id) VALUES (?, ?)
+            RETURNING id
+            ",
+            white_id,
+            black_id
+        )
+        .fetch_one(&self.pool)
+        .await
+        .change_context(CreateGameError::DatabaseError)?
+        .id;
+
+        let game = ChessGame::new(game_id);
 
         let mut game_info = GameInfo {
+            id: game_id,
             white: &mut user_tuple.0,
             black: &mut user_tuple.1,
             last_move: &MoveStatus::GameStart,
             last_player: Color::White,
             board: game.board(),
+            position: game.position(),
         };
 
-        Self::update_board(&mut game_info)
+        self.update_board(&mut game_info)
             .change_context(CreateGameError::DatabaseError)
             .await?;
 
@@ -137,7 +157,39 @@ impl BackendService {
         Ok(())
     }
 
-    async fn update_board(info: &mut GameInfo<'_>) -> Result<(), UpdateBoardError> {
+    async fn update_board(&self, info: &mut GameInfo<'_>) -> Result<(), UpdateBoardError> {
+        // update db with new game info
+        match info.last_move {
+            MoveStatus::Move(game_move) => {
+                let last_player_id = if info.last_player == Color::White {
+                    info.white.id()
+                } else {
+                    info.black.id()
+                };
+
+                let san = San::from_move(info.position, game_move).to_string();
+
+                sqlx::query!(
+                    "
+                    INSERT INTO moves (player_id, game_id, move, move_number)
+                    VALUES ($1, $2, $3, (SELECT move_number FROM moves WHERE game_id = $2 ORDER BY played_at DESC LIMIT 1) + 1)
+                ",
+                    last_player_id,
+                    info.id,
+                    san
+                )
+                .execute(&self.pool)
+                .change_context(UpdateBoardError::DatabaseError)
+                .await?;
+            }
+            MoveStatus::Check => todo!(),
+            MoveStatus::Checkmate => todo!(),
+            MoveStatus::Stalemate => todo!(),
+            MoveStatus::GameStart => todo!(),
+            MoveStatus::DrawOffer(_) => todo!(),
+            MoveStatus::Draw => todo!(),
+        }
+
         info.black
             .update_board(
                 info.white.username(),
@@ -206,14 +258,16 @@ impl BackendService {
         };
 
         let mut game_info = GameInfo {
+            id: game.id(),
             white: &mut white,
             black: &mut black,
             last_move: &move_status,
             last_player: current_player_color,
             board: game.board(),
+            position: game.position(),
         };
 
-        Self::update_board(&mut game_info)
+        self.update_board(&mut game_info)
             .await
             .change_context(ChessError::DatabaseError)?;
 
@@ -237,14 +291,16 @@ impl BackendService {
             let move_status = MoveStatus::Draw;
 
             let mut game_info = GameInfo {
+                id: game.id(),
                 white,
                 black,
                 last_move: &move_status,
                 last_player: current_player_color,
                 board: game.board(),
+                position: game.position(),
             };
 
-            Self::update_board(&mut game_info)
+            self.update_board(&mut game_info)
                 .await
                 .change_context(ChessError::DatabaseError)?;
 
@@ -257,14 +313,16 @@ impl BackendService {
             let move_status = MoveStatus::DrawOffer(current_player_color);
 
             let mut game_info = GameInfo {
+                id: game.id(),
                 white,
                 black,
                 last_move: &move_status,
                 last_player: current_player_color,
                 board: game.board(),
+                position: game.position(),
             };
 
-            Self::update_board(&mut game_info)
+            self.update_board(&mut game_info)
                 .await
                 .change_context(ChessError::DatabaseError)?;
 

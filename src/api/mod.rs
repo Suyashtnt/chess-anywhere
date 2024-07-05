@@ -1,5 +1,6 @@
 mod auth;
 pub mod error;
+mod game;
 pub mod session;
 mod user;
 
@@ -175,6 +176,7 @@ impl ApiService {
                 .layer(CorsLayer::permissive())
                 .merge(auth::router())
                 .merge(user::router())
+                .merge(game::router())
                 .with_state(task_api_state)
                 .layer(tracing_layer)
                 .layer(auth_layer);

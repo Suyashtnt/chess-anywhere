@@ -201,6 +201,7 @@ impl AuthnBackend for Backend {
 
 pub type InnerAuthSession = axum_login::AuthSession<Backend>;
 
+#[derive(Debug)]
 pub struct AuthSession(axum_login::AuthSession<Backend>);
 
 #[async_trait]

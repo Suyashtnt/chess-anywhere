@@ -92,36 +92,31 @@ pub async fn r#move(
                 MoveStatus::GameStart => unreachable!(),
             };
         }
-        Err(err) => {
-            let current_frame: &ChessError =
-                err.frames().find_map(|frame| frame.downcast_ref()).unwrap();
-
-            match current_frame {
-                ChessError::InvalidMove => {
-                    ctx.send(
-                        CreateReply::default()
-                            .content("You played an invalid move!")
-                            .ephemeral(true),
-                    )
-                    .change_context_lazy(error)
-                    .await?;
-                }
-                ChessError::NotYourTurn => {
-                    ctx.send(
-                        CreateReply::default()
-                            .content("It's not your turn!")
-                            .ephemeral(true),
-                    )
-                    .change_context_lazy(error)
-                    .await?;
-                }
-                _ => {
-                    return Err(err
-                        .change_context(error())
-                        .attach(Argument("move".to_string(), Arg::String(move_to_make))))
-                }
+        Err(err) => match err.current_context() {
+            ChessError::InvalidMove => {
+                ctx.send(
+                    CreateReply::default()
+                        .content("You played an invalid move!")
+                        .ephemeral(true),
+                )
+                .change_context_lazy(error)
+                .await?;
             }
-        }
+            ChessError::NotYourTurn => {
+                ctx.send(
+                    CreateReply::default()
+                        .content("It's not your turn!")
+                        .ephemeral(true),
+                )
+                .change_context_lazy(error)
+                .await?;
+            }
+            _ => {
+                return Err(err
+                    .change_context(error())
+                    .attach(Argument("move".to_string(), Arg::String(move_to_make))))
+            }
+        },
     }
     Ok(())
 }

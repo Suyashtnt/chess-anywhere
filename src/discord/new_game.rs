@@ -201,26 +201,21 @@ async fn start_game_both_discord(
 
     match res {
         Ok(()) => Ok(()),
-        Err(err) => {
-            let current_frame: &CreateGameError =
-                err.frames().find_map(|frame| frame.downcast_ref()).unwrap();
-
-            match current_frame {
-                CreateGameError::PlayerInGame => {
-                    message
-                        .edit(
-                            &ctx.http(),
-                            EditMessage::default()
-                                .content("One of y'all are already in a game!")
-                                .components(vec![]),
-                        )
-                        .change_context_lazy(error)
-                        .attach(error_user)
-                        .await
-                }
-                _ => return Err(err.change_context(error())),
+        Err(err) => match err.current_context() {
+            CreateGameError::PlayerInGame => {
+                message
+                    .edit(
+                        &ctx.http(),
+                        EditMessage::default()
+                            .content("One of y'all are already in a game!")
+                            .components(vec![]),
+                    )
+                    .change_context_lazy(error)
+                    .attach(error_user)
+                    .await
             }
-        }
+            _ => return Err(err.change_context(error())),
+        },
     }
 }
 
@@ -284,7 +279,6 @@ pub async fn discord_dm(
         .get()
         .unwrap()
         .challenge_user_discord(&ctx.author().name, other_user.id)
-        .change_context_lazy(error)
         .attach_lazy(&error_user)
         .await
     {
@@ -333,25 +327,20 @@ pub async fn discord_dm(
                 .attach_lazy(error_user)
                 .await
         }
-        Err(err) => {
-            let current_frame: &CreateGameError =
-                err.frames().find_map(|frame| frame.downcast_ref()).unwrap();
-
-            match current_frame {
-                CreateGameError::PlayerInGame => {
-                    message
-                        .edit(
-                            &ctx.http(),
-                            EditMessage::default()
-                                .content("One of y'all are already in a game!")
-                                .components(vec![]),
-                        )
-                        .change_context_lazy(error)
-                        .attach(error_user)
-                        .await
-                }
-                _ => return Err(err.change_context(error())),
+        Err(err) => match err.current_context() {
+            CreateGameError::PlayerInGame => {
+                message
+                    .edit(
+                        &ctx.http(),
+                        EditMessage::default()
+                            .content("One of y'all are already in a game!")
+                            .components(vec![]),
+                    )
+                    .change_context_lazy(error)
+                    .attach(error_user)
+                    .await
             }
-        }
+            _ => return Err(err.change_context(error())),
+        },
     }
 }

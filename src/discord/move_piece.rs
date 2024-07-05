@@ -48,12 +48,16 @@ pub async fn r#move(
                     .change_context_lazy(error)
                     .await?;
                 }
-                MoveStatus::Check => {
-                    ctx.send(CreateReply::default().content("Checked!").ephemeral(true))
-                        .change_context_lazy(error)
-                        .await?;
+                MoveStatus::Check(_) => {
+                    ctx.send(
+                        CreateReply::default()
+                            .content("Checked 'em!")
+                            .ephemeral(true),
+                    )
+                    .change_context_lazy(error)
+                    .await?;
                 }
-                MoveStatus::Checkmate => {
+                MoveStatus::Checkmate(_) => {
                     ctx.send(
                         CreateReply::default()
                             .content("Game over! Checkmate!")
@@ -62,7 +66,7 @@ pub async fn r#move(
                     .change_context_lazy(error)
                     .await?;
                 }
-                MoveStatus::Stalemate => {
+                MoveStatus::Stalemate(_) => {
                     ctx.send(
                         CreateReply::default()
                             .content("Game over! Stalemate!")

@@ -18,7 +18,7 @@ use std::{
 
 use axum::{Extension, Json, Router};
 use axum_login::AuthManagerLayerBuilder;
-use error_stack::{FutureExt as ErrorFutureExt, Report, Result};
+use error_stack::{FutureExt as ErrorFutureExt, Result};
 use poise::serenity_prelude::FutureExt;
 use resend_rs::{types::CreateEmailBaseOptions, Resend};
 use tokio::task::JoinHandle;
@@ -30,7 +30,7 @@ use tower_sessions_sqlx_store::SqliteStore;
 
 use crate::{
     backend::ServiceError,
-    users::{User, UserService},
+    users::{Game, User, UserService},
 };
 
 /// An axum server exposing ways to play chess through an API
@@ -66,21 +66,19 @@ impl std::error::Error for EmailError {}
 
 impl ApiState {
     pub async fn get_user_by_username(&self, username: &str) -> Result<Option<User>, sqlx::Error> {
-        UserService::fetch_user_by_username(username, &self.pool)
-            .await
-            .map_err(Report::from)
+        UserService::fetch_user_by_username(username, &self.pool).await
     }
 
     pub async fn get_user_by_email(&self, email: &str) -> Result<Option<User>, sqlx::Error> {
-        UserService::fetch_user_by_email(email, &self.pool)
-            .await
-            .map_err(Report::from)
+        UserService::fetch_user_by_email(email, &self.pool).await
     }
 
     pub async fn get_user_by_id(&self, id: i64) -> Result<Option<User>, sqlx::Error> {
-        UserService::fetch_user_by_id(id, &self.pool)
-            .await
-            .map_err(Report::from)
+        UserService::fetch_user_by_id(id, &self.pool).await
+    }
+
+    pub async fn get_games_by_user_id(&self, id: i64) -> Result<Vec<Game>, sqlx::Error> {
+        UserService::fetch_games_by_user_id(id, &self.pool).await
     }
 
     #[tracing::instrument]

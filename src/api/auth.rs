@@ -82,8 +82,8 @@ enum AuthError {
 impl fmt::Display for AuthError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::InvalidLink => f.write_str("Invalid link"),
-            Self::BackendError => f.write_str("Internal Backend error"),
+            Self::InvalidLink => f.write_str("error.invalid.link"),
+            Self::BackendError => f.write_str("error.internal"),
         }
     }
 }

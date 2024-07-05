@@ -3,8 +3,8 @@ CREATE TABLE games (
     id INTEGER PRIMARY KEY NOT NULL,
     white_id INTEGER NOT NULL REFERENCES users(id),
     black_id INTEGER NOT NULL REFERENCES users(id),
-    -- W = white win, B = black win, D = draw, Null = ongoing
-    outcome TEXT CHECK(outcome IN ('W', 'B', 'D')),
+    -- 0 = draw, 1 = white, 2 = black, null = ongoing
+    outcome INTEGER,
     created_at INTEGER NOT NULL DEFAULT (unixepoch('now'))
 ) STRICT;
 

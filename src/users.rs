@@ -4,6 +4,7 @@ use error_stack::Result;
 use poise::serenity_prelude::UserId;
 use skillratings::glicko2::Glicko2Rating;
 use sqlx::{Executor, Sqlite};
+use time::OffsetDateTime;
 
 #[derive(Debug)]
 pub struct UserService;
@@ -64,6 +65,25 @@ impl UserService {
         .fetch_optional(executor)
         .await
         .map(|row| row.map(Into::into))
+        .map_err(Into::into)
+    }
+
+    pub async fn fetch_games_by_user_id(
+        id: i64,
+        executor: impl Executor<'_, Database = Sqlite>,
+    ) -> Result<Vec<Game>, sqlx::Error> {
+        sqlx::query_as!(
+            RawGame,
+            "
+            SELECT id, white_id, black_id, outcome, created_at
+            FROM games
+            WHERE white_id = $1 OR black_id = $1
+            ",
+            id
+        )
+        .fetch_all(executor)
+        .await
+        .map(|rows| rows.into_iter().map(Into::into).collect())
         .map_err(Into::into)
     }
 
@@ -200,6 +220,67 @@ impl UserService {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameOutcome {
+    Draw = 0,
+    WhiteWin = 1,
+    BlackWin = 2,
+}
+
+impl From<GameOutcome> for i64 {
+    fn from(status: GameOutcome) -> Self {
+        status as i64
+    }
+}
+
+impl From<i64> for GameOutcome {
+    fn from(status: i64) -> Self {
+        match status {
+            0 => Self::Draw,
+            1 => Self::WhiteWin,
+            2 => Self::BlackWin,
+            _ => panic!("Invalid game outcome"),
+        }
+    }
+}
+
+/// A game a user has played
+#[derive(Debug, Clone)]
+pub struct Game {
+    id: i64,
+    white_id: i64,
+    black_id: i64,
+    outcome: Option<GameOutcome>,
+    created_at: OffsetDateTime,
+}
+
+impl Game {
+    #[must_use]
+    pub const fn id(&self) -> i64 {
+        self.id
+    }
+
+    #[must_use]
+    pub const fn white_id(&self) -> i64 {
+        self.white_id
+    }
+
+    #[must_use]
+    pub const fn black_id(&self) -> i64 {
+        self.black_id
+    }
+
+    #[must_use]
+    pub const fn outcome(&self) -> Option<GameOutcome> {
+        self.outcome
+    }
+
+    #[must_use]
+    pub const fn created_at(&self) -> OffsetDateTime {
+        self.created_at
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct User {
     /// ID of the player
@@ -262,6 +343,15 @@ pub struct RawUser {
     pub elo_volatility: f64,
 }
 
+/// A raw game from the database, intended to be immediately converted into a Game
+pub struct RawGame {
+    pub id: i64,
+    pub white_id: i64,
+    pub black_id: i64,
+    pub outcome: Option<i64>,
+    pub created_at: i64,
+}
+
 impl From<RawUser> for User {
     fn from(raw: RawUser) -> Self {
         Self {
@@ -272,6 +362,18 @@ impl From<RawUser> for User {
                 deviation: raw.elo_deviation,
                 volatility: raw.elo_volatility,
             },
+        }
+    }
+}
+
+impl From<RawGame> for Game {
+    fn from(raw: RawGame) -> Self {
+        Self {
+            id: raw.id,
+            white_id: raw.white_id,
+            black_id: raw.black_id,
+            outcome: raw.outcome.map(GameOutcome::from),
+            created_at: OffsetDateTime::from_unix_timestamp(raw.created_at).unwrap(),
         }
     }
 }

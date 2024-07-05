@@ -1,7 +1,7 @@
 use error_stack::{FutureExt, Result};
 use poise::{
     serenity_prelude::{CreateMessage, EditMessage},
-    CreateReply, Modal,
+    Modal,
 };
 
 use crate::{

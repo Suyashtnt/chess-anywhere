@@ -3,7 +3,7 @@ use std::fmt;
 use aide::axum::{routing::get_with, ApiRouter, RouterExt};
 use axum::{extract::State, http::StatusCode, Json, Router};
 use axum_login::AuthUser;
-use error_stack::{report, FutureExt};
+use error_stack::report;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -54,11 +54,17 @@ enum MoveResponse {
     /// Contains a string version of the move played
     MovePlayed(String),
     /// Your move put the opponent in check
-    Check,
+    ///
+    /// Contains a string version of the move played
+    Check(String),
     /// Your move put the opponent in checkmate and won the game
-    Checkmate,
+    ///
+    /// Contains a string version of the move played
+    Checkmate(String),
     /// Your move put the game in a stalemate
-    Stalemate,
+    ///
+    /// Contains a string version of the move played
+    Stalemate(String),
     /// The game has started
     GameStart,
     /// The other player has offered a draw
@@ -71,9 +77,9 @@ impl From<MoveStatus> for MoveResponse {
     fn from(status: MoveStatus) -> Self {
         match status {
             MoveStatus::Move(chess_move) => Self::MovePlayed(chess_move.to_string()),
-            MoveStatus::Check => Self::Check,
-            MoveStatus::Checkmate => Self::Checkmate,
-            MoveStatus::Stalemate => Self::Stalemate,
+            MoveStatus::Check(chess_move) => Self::Check(chess_move.to_string()),
+            MoveStatus::Checkmate(chess_move) => Self::Checkmate(chess_move.to_string()),
+            MoveStatus::Stalemate(chess_move) => Self::Stalemate(chess_move.to_string()),
             MoveStatus::GameStart => Self::GameStart,
             MoveStatus::DrawOffer(color) => Self::DrawOffer(color.into()),
             MoveStatus::Draw => Self::Draw,
@@ -104,11 +110,11 @@ enum MoveError {
 impl fmt::Display for MoveError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Unauthorized => f.write_str("You need to login to see your stats"),
-            Self::BackendError => f.write_str("Internal Backend error"),
-            Self::NotInGame => f.write_str("You are not in a game"),
-            Self::InvalidMove => f.write_str("An invalid move was played"),
-            Self::NotYourTurn => f.write_str("It's not your turn to play a move"),
+            Self::Unauthorized => f.write_str("error.unauthorized"),
+            Self::BackendError => f.write_str("error.internal"),
+            Self::NotInGame => f.write_str("error.invalid.game"),
+            Self::InvalidMove => f.write_str("error.invalid.move"),
+            Self::NotYourTurn => f.write_str("error.invalid.move"),
         }
     }
 }

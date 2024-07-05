@@ -3,13 +3,15 @@ use dashmap::{mapref::multiple::RefMutMulti, DashMap};
 use error_stack::{bail, ensure, FutureExt, Result, ResultExt};
 use players::{Player, PlayerPlatform, UpdateBoardError};
 use poise::serenity_prelude::UserId;
-use shakmaty::{san::San, Board, Chess, Color, Outcome};
+use shakmaty::{san::San, Board, Chess, Color, Move, Outcome};
 use skillratings::Outcomes;
 use std::{
     error::Error,
     fmt::{self, Debug},
     sync::Arc,
 };
+
+use crate::users::GameOutcome;
 
 pub mod chess;
 pub mod players;
@@ -71,7 +73,7 @@ pub(crate) struct GameInfo<'a> {
     pub white: &'a mut Player,
     pub black: &'a mut Player,
     pub last_move: &'a MoveStatus,
-    pub last_player: Color,
+    pub current_player: Color,
     pub board: &'a Board,
     pub position: &'a Chess,
 }
@@ -143,7 +145,7 @@ impl BackendService {
             white: &mut user_tuple.0,
             black: &mut user_tuple.1,
             last_move: &MoveStatus::GameStart,
-            last_player: Color::White,
+            current_player: Color::White,
             board: game.board(),
             position: game.position(),
         };
@@ -157,37 +159,96 @@ impl BackendService {
         Ok(())
     }
 
+    async fn add_move_to_db(
+        &self,
+        info: &mut GameInfo<'_>,
+        game_move: &Move,
+    ) -> Result<(), UpdateBoardError> {
+        let last_player_id = if info.current_player == Color::White {
+            info.white.id()
+        } else {
+            info.black.id()
+        };
+
+        let san = San::from_move(info.position, game_move).to_string();
+
+        sqlx::query!(
+            "
+                    INSERT INTO moves (player_id, game_id, move, move_number)
+                    VALUES (
+                        $1,
+                        $2,
+                        $3,
+                        (
+                            SELECT (move_number + 1) FROM moves WHERE game_id = $2
+                            UNION
+                            SELECT 1 as move_number
+                            ORDER BY move_number DESC LIMIT 1
+                        )
+                    )
+                ",
+            last_player_id,
+            info.id,
+            san
+        )
+        .execute(&self.pool)
+        .change_context(UpdateBoardError::DatabaseError)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn set_game_outcome(
+        &self,
+        game_info: &mut GameInfo<'_>,
+        outcome: Outcome,
+    ) -> Result<(), UpdateBoardError> {
+        let outcome: i64 = match outcome {
+            Outcome::Draw => GameOutcome::Draw,
+            Outcome::Decisive {
+                winner: Color::White,
+            } => GameOutcome::WhiteWin,
+            Outcome::Decisive {
+                winner: Color::Black,
+            } => GameOutcome::BlackWin,
+        }
+        .into();
+
+        sqlx::query!(
+            "
+            UPDATE games
+            SET outcome = $1
+            WHERE id = $2
+            ",
+            outcome,
+            game_info.id
+        )
+        .execute(&self.pool)
+        .change_context(UpdateBoardError::DatabaseError)
+        .await?;
+
+        Ok(())
+    }
+
     async fn update_board(&self, info: &mut GameInfo<'_>) -> Result<(), UpdateBoardError> {
         // update db with new game info
         match info.last_move {
-            MoveStatus::Move(game_move) => {
-                let last_player_id = if info.last_player == Color::White {
-                    info.white.id()
-                } else {
-                    info.black.id()
-                };
-
-                let san = San::from_move(info.position, game_move).to_string();
-
-                sqlx::query!(
-                    "
-                    INSERT INTO moves (player_id, game_id, move, move_number)
-                    VALUES ($1, $2, $3, (SELECT move_number FROM moves WHERE game_id = $2 ORDER BY played_at DESC LIMIT 1) + 1)
-                ",
-                    last_player_id,
-                    info.id,
-                    san
-                )
-                .execute(&self.pool)
-                .change_context(UpdateBoardError::DatabaseError)
-                .await?;
+            MoveStatus::Move(game_move) => self.add_move_to_db(info, game_move).await?,
+            MoveStatus::Check(game_move) => self.add_move_to_db(info, game_move).await?,
+            MoveStatus::Checkmate(game_move) => {
+                // if it's checkmate, it means the last player won
+                let winner = info.current_player.other();
+                self.add_move_to_db(info, game_move).await?;
+                self.set_game_outcome(info, Outcome::Decisive { winner })
+                    .await?;
             }
-            MoveStatus::Check => todo!(),
-            MoveStatus::Checkmate => todo!(),
-            MoveStatus::Stalemate => todo!(),
-            MoveStatus::GameStart => todo!(),
-            MoveStatus::DrawOffer(_) => todo!(),
-            MoveStatus::Draw => todo!(),
+            MoveStatus::Stalemate(game_move) => {
+                self.add_move_to_db(info, game_move).await?;
+                self.set_game_outcome(info, Outcome::Draw).await?;
+            }
+            MoveStatus::Draw => self.set_game_outcome(info, Outcome::Draw).await?,
+            MoveStatus::DrawOffer(_) => {}
+            MoveStatus::GameStart => {}
         }
 
         info.black
@@ -196,7 +257,7 @@ impl BackendService {
                 &Color::Black,
                 &info.board,
                 &info.last_move,
-                info.last_player == Color::Black,
+                info.current_player == Color::Black,
             )
             .await?;
 
@@ -206,7 +267,7 @@ impl BackendService {
                 &Color::White,
                 &info.board,
                 &info.last_move,
-                info.last_player == Color::White,
+                info.current_player == Color::White,
             )
             .await
     }
@@ -244,15 +305,15 @@ impl BackendService {
             .change_context(ChessError::InvalidMove)?;
 
         let chess_move = game.play_move(&current_player_color, san)?;
-        let current_player_color = current_player_color.other();
+        let current_player = current_player_color.other();
 
         let move_status = if let Some(outcome) = game.outcome() {
             match outcome {
-                Outcome::Draw => MoveStatus::Stalemate,
-                Outcome::Decisive { .. } => MoveStatus::Checkmate,
+                Outcome::Draw => MoveStatus::Stalemate(chess_move),
+                Outcome::Decisive { .. } => MoveStatus::Checkmate(chess_move),
             }
         } else if game.is_check() {
-            MoveStatus::Check
+            MoveStatus::Check(chess_move)
         } else {
             MoveStatus::Move(chess_move)
         };
@@ -262,7 +323,7 @@ impl BackendService {
             white: &mut white,
             black: &mut black,
             last_move: &move_status,
-            last_player: current_player_color,
+            current_player,
             board: game.board(),
             position: game.position(),
         };
@@ -295,7 +356,7 @@ impl BackendService {
                 white,
                 black,
                 last_move: &move_status,
-                last_player: current_player_color,
+                current_player: current_player_color,
                 board: game.board(),
                 position: game.position(),
             };
@@ -317,7 +378,7 @@ impl BackendService {
                 white,
                 black,
                 last_move: &move_status,
-                last_player: current_player_color,
+                current_player: current_player_color,
                 board: game.board(),
                 position: game.position(),
             };

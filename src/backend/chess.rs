@@ -140,9 +140,9 @@ impl ChessGame {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum MoveStatus {
     Move(Move),
-    Check,
-    Checkmate,
-    Stalemate,
+    Check(Move),
+    Checkmate(Move),
+    Stalemate(Move),
     GameStart,
     DrawOffer(Color),
     Draw,

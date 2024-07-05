@@ -31,9 +31,9 @@ impl<'a> BoardDrawer<'a> {
             }
             MoveStatus::Move(_) => unreachable!("No fairy chess pieces yet"),
             MoveStatus::GameStart => 979399119644799026,
-            MoveStatus::Check => 981209797716238366,
-            MoveStatus::Checkmate => 981209797712035920,
-            MoveStatus::Stalemate => 979399119644799026,
+            MoveStatus::Check(_) => 981209797716238366,
+            MoveStatus::Checkmate(_) => 981209797712035920,
+            MoveStatus::Stalemate(_) => 979399119644799026,
             MoveStatus::DrawOffer(_) => 981223404520763522,
             MoveStatus::Draw => 981223404520763522,
         }
@@ -317,7 +317,7 @@ pub fn create_board_embed(
                 .field("The game has started!", "Good luck!", true)
                 .field("Current player", current_player, true);
         }
-        MoveStatus::Check => {
+        MoveStatus::Check(_) => {
             let other_player = if is_our_turn {
                 other_player_name
             } else {
@@ -326,10 +326,10 @@ pub fn create_board_embed(
 
             embed = embed.field("Check!", other_player, true);
         }
-        MoveStatus::Stalemate => {
+        MoveStatus::Stalemate(_) => {
             embed = embed.field("Stalemate", "The game is a stalemate", true);
         }
-        MoveStatus::Checkmate => {
+        MoveStatus::Checkmate(_) => {
             let current_player = if is_our_turn {
                 current_player_name
             } else {

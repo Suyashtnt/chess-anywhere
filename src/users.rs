@@ -186,7 +186,7 @@ impl UserService {
         sqlx::query!(
             "
             INSERT INTO email_verification (user_id, email, data, expiry_date)
-            VALUES ($1, $2, $3, datetime('now', '+1 day'))
+            VALUES ($1, $2, $3, unixepoch('now', '+1 hour'))
             RETURNING id
             ",
             user_id,

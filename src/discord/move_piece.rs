@@ -137,7 +137,6 @@ async fn autocomplete_moves<'a>(ctx: Context<'_>, partial: &'a str) -> SanArray 
         .get_moves(&player_platform)
         .await
         .into_iter()
-        .map(|san| san.to_string())
         .filter(|san| san.starts_with(partial))
         .collect()
 }

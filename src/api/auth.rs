@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     error::AxumReport,
-    user::{AuthSession, Credentials},
+    session::{AuthSession, Credentials},
     ApiState,
 };
 
@@ -70,9 +70,10 @@ async fn login_email(
     Json(EmailLogin { email }): Json<EmailLogin>,
 ) -> Result<Json<EmailResponse>, AxumReport<AuthError>> {
     let Some(user_id) = state
-        .get_userid_by_email(&email)
+        .get_user_by_email(&email)
         .change_context(AuthError::BackendError)
         .await?
+        .map(|user| user.id())
     else {
         return Ok(Json(EmailResponse::EmailSent));
     };
@@ -91,7 +92,7 @@ async fn signup_email(
     Json(EmailSignup { username, email }): Json<EmailSignup>,
 ) -> Result<Json<EmailResponse>, AxumReport<AuthError>> {
     if state
-        .get_userid_by_username(&username)
+        .get_user_by_username(&username)
         .change_context(AuthError::BackendError)
         .await?
         .is_some()

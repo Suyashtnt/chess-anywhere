@@ -3,5 +3,13 @@
         "backend",
         "discord",
         "api"
+    ],
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "database": "${workspaceFolder:chess-anywhere}/target/chess.db",
+            "name": "Main"
+        }
     ]
 }

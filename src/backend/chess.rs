@@ -113,7 +113,8 @@ impl ChessGame {
         self.game
             .legal_moves()
             .into_iter()
-            .map(|m| m.to_string())
+            .map(|m| San::from_move(&self.game, &m))
+            .map(|san| san.to_string())
             .chain(once(DRAW_OFFER_SAN.to_string()))
             .collect()
     }

@@ -1,145 +1,59 @@
-use axum::async_trait;
-use axum_login::{AuthUser, AuthnBackend};
-use veil::Redact;
+use std::fmt;
 
-#[derive(Debug, Clone)]
-pub enum Credentials {
-    /// Logged in via an email magic link
-    Email {
-        /// The magic link id
-        id: i64,
-        /// The magic link data (AKA entropy garbage)
-        data: Vec<u8>,
-    },
+use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
+use axum_login::AuthUser;
+use error_stack::{report, FutureExt};
+use serde::Serialize;
+
+use super::{error::AxumReport, session::AuthSession, ApiState};
+
+pub fn router() -> Router<ApiState> {
+    Router::new().route("/user/stats", get(stats))
 }
 
-/// A logged in user to the web API
-#[derive(Redact, Clone)]
-pub struct User {
-    id: i64,
+#[derive(Debug, Serialize)]
+struct StatsResponse {
     username: String,
-    #[redact]
-    login: Option<Credentials>,
+    elo: f64,
 }
 
-impl AuthUser for User {
-    type Id = i64;
+#[derive(Debug)]
+enum StatsError {
+    Unauthorized,
+    BackendError,
+}
 
-    fn id(&self) -> Self::Id {
-        self.id
-    }
-
-    fn session_auth_hash(&self) -> &[u8] {
-        match &self.login {
-            Some(Credentials::Email { data, .. }) => data,
-            None => &[],
+impl fmt::Display for StatsError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Unauthorized => f.write_str("You need to login to see your stats"),
+            Self::BackendError => f.write_str("Internal Backend error"),
         }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Backend {
-    db: sqlx::SqlitePool,
+impl std::error::Error for StatsError {}
+
+async fn stats(
+    State(state): State<ApiState>,
+    session: AuthSession,
+) -> Result<Json<StatsResponse>, AxumReport<StatsError>> {
+    let user = session.user.ok_or(AxumReport::new(
+        StatusCode::UNAUTHORIZED,
+        report!(StatsError::Unauthorized),
+    ))?;
+
+    let db_user = state
+        .get_user_by_id(user.id().id())
+        .change_context(StatsError::BackendError)
+        .await?
+        .ok_or(AxumReport::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            report!(StatsError::BackendError),
+        ))?;
+
+    Ok(Json(StatsResponse {
+        username: db_user.username().to_string(),
+        elo: db_user.elo().rating,
+    }))
 }
-
-impl Backend {
-    pub fn new(db: sqlx::SqlitePool) -> Self {
-        Self { db }
-    }
-}
-
-#[async_trait]
-impl AuthnBackend for Backend {
-    type User = User;
-    type Credentials = Credentials;
-    type Error = sqlx::Error;
-
-    async fn authenticate(
-        &self,
-        credentials: Self::Credentials,
-    ) -> Result<Option<Self::User>, Self::Error> {
-        match credentials {
-            Credentials::Email { data, id } => {
-                let record = sqlx::query!(
-                    // sqlite
-                    "
-                        SELECT expiry_date, username, email, user_id
-                        FROM email_verification
-                        INNER JOIN users ON email_verification.user_id = users.id
-                        WHERE
-                            email_verification.id = $1 AND
-                            email_verification.data = $2 AND
-                            date(email_verification.expiry_date) >= date('now') AND
-                            email_verification.used = FALSE
-                        ",
-                    id,
-                    data
-                )
-                .fetch_optional(&self.db)
-                .await?;
-
-                // store in email_login if the record doesn't exist there yet
-                if let Some(record) = record {
-                    let mut transaction = self.db.begin().await?;
-
-                    sqlx::query!(
-                        "
-                            UPDATE email_verification
-                            SET used = TRUE
-                            WHERE id = $1
-                        ",
-                        id
-                    )
-                    .execute(&mut *transaction)
-                    .await?;
-
-                    sqlx::query!(
-                        "
-                            INSERT INTO email_login (email, user_id)
-                            VALUES ($1, $2)
-                            ON CONFLICT (email) DO NOTHING
-                            ",
-                        record.email,
-                        record.user_id
-                    )
-                    .execute(&mut *transaction)
-                    .await?;
-
-                    transaction.commit().await?;
-
-                    Ok(Some(User {
-                        id,
-                        username: record.username,
-                        login: Some(Credentials::Email { id, data }),
-                    }))
-                } else {
-                    Ok(None)
-                }
-            }
-        }
-    }
-
-    async fn get_user(
-        &self,
-        id: &<Self::User as AuthUser>::Id,
-    ) -> Result<Option<Self::User>, Self::Error> {
-        let record = sqlx::query!(
-            "
-                SELECT username
-                FROM users
-                WHERE id = $1
-                ",
-            id
-        )
-        .fetch_optional(&self.db)
-        .await?;
-
-        Ok(record.map(|record| User {
-            id: *id,
-            username: record.username,
-            login: None,
-        }))
-    }
-}
-
-pub type AuthSession = axum_login::AuthSession<Backend>;

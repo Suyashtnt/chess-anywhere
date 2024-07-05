@@ -1,6 +1,7 @@
 mod auth;
 pub mod error;
-pub mod user;
+pub mod session;
+mod user;
 
 use base64::prelude::*;
 use core::fmt;
@@ -21,7 +22,10 @@ use tower_sessions::{
 };
 use tower_sessions_sqlx_store::SqliteStore;
 
-use crate::{backend::ServiceError, users::UserService};
+use crate::{
+    backend::ServiceError,
+    users::{User, UserService},
+};
 
 /// An axum server exposing ways to play chess through an API
 #[derive(Debug, Clone)]
@@ -55,37 +59,33 @@ impl fmt::Display for EmailError {
 impl std::error::Error for EmailError {}
 
 impl ApiState {
-    pub async fn get_userid_by_username(&self, username: &str) -> Result<Option<i64>, sqlx::Error> {
+    pub async fn get_user_by_username(&self, username: &str) -> Result<Option<User>, sqlx::Error> {
         UserService::fetch_user_by_username(username, &self.pool)
             .await
             .map_err(Report::from)
-            .map(|row| row.map(|row| row.id()))
     }
 
-    pub async fn get_userid_by_email(&self, email: &str) -> Result<Option<i64>, sqlx::Error> {
+    pub async fn get_user_by_email(&self, email: &str) -> Result<Option<User>, sqlx::Error> {
         UserService::fetch_user_by_email(email, &self.pool)
             .await
             .map_err(Report::from)
-            .map(|row| row.map(|row| row.id()))
     }
 
+    pub async fn get_user_by_id(&self, id: i64) -> Result<Option<User>, sqlx::Error> {
+        UserService::fetch_user_by_id(id, &self.pool)
+            .await
+            .map_err(Report::from)
+    }
+
+    #[tracing::instrument]
     pub async fn add_user(&self, username: &str) -> Result<i64, sqlx::Error> {
         UserService::create(username, &self.pool)
             .await
             .map(|row| row.id())
     }
 
+    #[tracing::instrument]
     pub async fn send_magic_email(&self, email: &str, user_id: i64) -> Result<(), EmailError> {
-        // silently ignore if email already exists
-        if self
-            .get_userid_by_email(&email)
-            .change_context(EmailError::SqlxError)
-            .await?
-            .is_some()
-        {
-            return Ok(());
-        };
-
         let entropy: Vec<u8> = (0..32).map(|_| rand::random()).collect();
 
         // convert entropy into a string
@@ -153,16 +153,16 @@ impl ApiService {
             );
 
             let session_layer = SessionManagerLayer::new(task_session_store)
-                .with_secure(false)
                 .with_expiry(Expiry::OnInactivity(Duration::days(1)));
 
             let tracing_layer = TraceLayer::new_for_http();
 
-            let backend = user::Backend::new(task_pool.clone());
+            let backend = session::Backend::new(task_pool.clone());
             let auth_layer = AuthManagerLayerBuilder::new(backend, session_layer).build();
 
             let app = Router::new()
                 .merge(auth::router())
+                .merge(user::router())
                 .with_state(task_api_state)
                 .layer(tracing_layer)
                 .layer(auth_layer);

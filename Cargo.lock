@@ -163,6 +163,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "axum-extra"
+version = "0.9.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0be6ea09c9b96cb5076af0de2e383bd2bc0c18f827cf1967bdd353e0b910d733"
+dependencies = [
+ "axum",
+ "axum-core",
+ "bytes",
+ "cookie",
+ "futures-util",
+ "http 1.1.0",
+ "http-body 1.0.0",
+ "http-body-util",
+ "mime",
+ "pin-project-lite",
+ "serde",
+ "tower",
+ "tower-layer",
+ "tower-service",
+ "tracing",
+]
+
+[[package]]
 name = "axum-login"
 version = "0.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -321,6 +344,7 @@ version = "0.1.0"
 dependencies = [
  "arrayvec",
  "axum",
+ "axum-extra",
  "axum-login",
  "base64 0.22.1",
  "dashmap 6.0.1",

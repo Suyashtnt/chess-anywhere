@@ -9,6 +9,7 @@ use axum::{
 };
 use base64::prelude::*;
 use error_stack::{report, FutureExt};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -25,24 +26,34 @@ pub fn router() -> Router<ApiState> {
         .route("/email/signup", post(signup_email))
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+/// Login with an email
 struct EmailLogin {
+    /// The email to login with
     email: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+/// Sign up with an email
 struct EmailSignup {
+    /// The username to sign up with
     username: String,
+    /// The email to sign up with
     email: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+/// The query parameters for the email link
+///
+/// You should not need to generate this yourself. This comes by an email link
 struct EmailLink {
+    /// The magic link id
     id: i64,
+    /// The magic link validation data
     entropy: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, JsonSchema)]
 enum AuthError {
     InvalidLink,
     BackendError,
@@ -59,8 +70,10 @@ impl fmt::Display for AuthError {
 
 impl std::error::Error for AuthError {}
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, JsonSchema)]
+/// The response to an email request
 pub enum EmailResponse {
+    /// The email was sent
     EmailSent,
 }
 

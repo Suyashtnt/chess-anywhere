@@ -5,7 +5,25 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use error_stack::{Context, Report};
+use schemars::JsonSchema;
+
+#[derive(JsonSchema)]
+#[serde(remote = "Report")]
+pub struct ReportRef<C> {
+    context: C,
+    attachments: Vec<String>,
+    sources: Vec<ReportRef<serde_json::Value>>,
+}
+
+#[derive(JsonSchema)]
+#[serde(into = "Report", with = "ReportRef")]
 pub struct AxumReport<C: Context>(StatusCode, Report<C>);
+
+impl<C: Context> From<AxumReport<C>> for Report<C> {
+    fn from(report: AxumReport<C>) -> Self {
+        report.1
+    }
+}
 
 impl<C: Context> AxumReport<C> {
     pub fn new(status: StatusCode, report: Report<C>) -> Self {

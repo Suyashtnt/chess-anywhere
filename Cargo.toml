@@ -32,6 +32,8 @@ axum-login = "0.15.3"
 time = "0.3.36"
 base64 = "0.22.1"
 axum-extra = { version = "0.9.3", features = ["cookie"] }
+aide = { version = "0.13.4", features = ["axum"] }
+schemars = "0.8.21"
 
 [profile.dev.package.sqlx-macros]
 opt-level = 3

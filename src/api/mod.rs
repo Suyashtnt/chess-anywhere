@@ -3,6 +3,10 @@ pub mod error;
 pub mod session;
 mod user;
 
+use aide::{
+    axum::{routing::get, IntoApiResponse, RouterExt},
+    openapi::{Info, OpenApi},
+};
 use base64::prelude::*;
 use core::fmt;
 use std::{
@@ -10,7 +14,7 @@ use std::{
     net::SocketAddr,
 };
 
-use axum::Router;
+use axum::{Extension, Json, Router};
 use axum_login::AuthManagerLayerBuilder;
 use error_stack::{FutureExt as ErrorFutureExt, Report, Result};
 use poise::serenity_prelude::FutureExt;
@@ -121,6 +125,10 @@ impl ApiState {
     }
 }
 
+async fn serve_api(Extension(api): Extension<OpenApi>) -> impl IntoApiResponse {
+    Json(api)
+}
+
 impl ApiService {
     pub async fn start<F>(
         resend_api_key: &str,
@@ -163,20 +171,32 @@ impl ApiService {
             let app = Router::new()
                 .merge(auth::router())
                 .merge(user::router())
+                .api_route("/api.json", get(serve_api))
                 .with_state(task_api_state)
                 .layer(tracing_layer)
                 .layer(auth_layer);
 
+            let mut api = OpenApi {
+                info: Info {
+                    description: Some("Chess-anywhere API".to_string()),
+                    ..Info::default()
+                },
+                ..OpenApi::default()
+            };
+
             let addr = SocketAddr::from(([127, 0, 0, 1], port));
             let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
 
-            axum::serve(listener, app.into_make_service())
-                .with_graceful_shutdown(
-                    shutdown_signal.then(|_| async move { deletion_task.abort() }),
-                )
-                .into_future()
-                .change_context(ServiceError)
-                .await
+            axum::serve(
+                listener,
+                app.finish_api(&mut api)
+                    .layer(Extension(api))
+                    .into_make_service(),
+            )
+            .with_graceful_shutdown(shutdown_signal.then(|_| async move { deletion_task.abort() }))
+            .into_future()
+            .change_context(ServiceError)
+            .await
         });
 
         Ok((

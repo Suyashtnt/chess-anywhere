@@ -130,7 +130,7 @@ impl Player {
             PlayerPlatform::Discord {
                 ref mut game_message,
                 http,
-                user,
+                ..
             } => {
                 let embed = create_board_embed(
                     self.user.username(),
@@ -140,19 +140,6 @@ impl Player {
                     move_status,
                     is_our_turn,
                 );
-
-                // quick notif message
-                game_message
-                    .channel_id
-                    .send_message(
-                        &*http,
-                        CreateMessage::new().content(format!("{}", user.mention())),
-                    )
-                    .change_context(UpdateBoardError::DiscordError)
-                    .await?
-                    .delete(&*http)
-                    .change_context(UpdateBoardError::DiscordError)
-                    .await?;
 
                 game_message
                     .edit(&*http, EditMessage::default().content("").embed(embed))

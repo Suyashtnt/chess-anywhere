@@ -1,6 +1,7 @@
 mod auth;
 pub mod error;
 mod game;
+mod oauth;
 pub mod session;
 mod user;
 
@@ -175,6 +176,7 @@ impl ApiService {
                 .merge(auth::router())
                 .merge(user::router())
                 .merge(game::router())
+                .merge(oauth::discord::router())
                 .with_state(task_api_state)
                 .layer(tracing_layer)
                 .layer(auth_layer);

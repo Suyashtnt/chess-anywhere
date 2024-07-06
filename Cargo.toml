@@ -35,6 +35,7 @@ axum-extra = { version = "0.9.3", features = ["cookie"] }
 aide = { version = "0.13.4", features = ["axum", "axum-extra-query", "scalar"] }
 schemars = "0.8.21"
 indexmap = "2.2.6"
+oauth2 = "4.4.2"
 
 [profile.dev.package.sqlx-macros]
 opt-level = 3

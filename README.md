@@ -15,25 +15,30 @@ This is the most cursed project idea I've had in a while.
   - [x] Link to web profiles
   - [x] Change username
 - [/] Web (chess-anywhere.wobbl.in)
-  - [/] REST Api
+  - [/] Store games in a database for future queries
+  - [/] REST API
+    - [ ] Challenge other web users
+    - [ ] Challenge discord users
     - [ ] Stream chess games
     - [x] Play move
     - [ ] Get game state
-    - [/] Store games in a database for future queries
     - [ ] FEN/PGN support
     - [ ] Change username
+    - [ ] Manage account connections
   - [ ] CapnProto API
+    - [ ] Challenge other web users
+    - [ ] Challenge discord users
     - [ ] Stream chess games
     - [ ] Play move
     - [ ] Get game state
-    - [ ] Store games in a database for future queries
     - [ ] FEN/PGN support
     - [ ] Change Username
-  - [ ] Challenge other web users
-  - [ ] Challenge discord users
+    - [ ] Manage account connections
 - [ ] Minecraft (possibly interact with <https://www.curseforge.com/minecraft/mc-mods/table-top-craft-fabric>)
+  - [ ] Probably require logging into an existing account rather than make one in-service
 - [ ] Slack (bot)
-- [ ] Lichess (bot; requires timers to be implemented first. This could also be used to get the players initial ELO if it's the first game they've played)
+- [ ] Lichess (bot; requires timers to be implemented first which might be impossible based on discord and slack. This could also be used to get the players initial ELO if it's the first game they've played)
+  - [ ] Requires logging into an existing account rather than make one in-service
 
 ## Resource list
 

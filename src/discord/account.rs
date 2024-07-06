@@ -25,7 +25,7 @@ struct EmailModal {
 
 #[poise::command(slash_command)]
 #[tracing::instrument]
-/// Link your chess-anywhere account created on Discord with your email (a modal will pop up)
+/// Link an email to your Discord-made account (to link a pre-existing account, use the website)
 pub async fn email(ctx: ApplicationContext<'_>) -> Result<(), CommandError> {
     let error = || CommandError::from_ctx(&poise::Context::Application(ctx));
 

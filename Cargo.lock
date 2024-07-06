@@ -2031,13 +2031,14 @@ dependencies = [
 
 [[package]]
 name = "resend-rs"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c38eaeed75f842694fa465a1f6e8d23f8e03a8e3c4fcff6d66bf686d9401e6aa"
+checksum = "b8fd667d5cdc2f3bbc948eb6bed8b572ab7033307a5dde4c764d88c89c37322a"
 dependencies = [
  "ecow",
  "governor",
  "maybe-async",
+ "rand",
  "reqwest 0.12.5",
  "serde",
  "thiserror",
@@ -2356,9 +2357,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.118"
+version = "1.0.120"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d947f6b3163d8857ea16c4fa0dd4840d52f3041039a85decd46867eb1abef2e4"
+checksum = "4e0d21c9a8cae1235ad58a00c11cb40d4b1e5c784f1ef2c537876ed6ffd8b7c5"
 dependencies = [
  "itoa",
  "ryu",

@@ -175,28 +175,6 @@ impl UserService {
         .map_err(Into::into)
     }
 
-    async fn update_elo(
-        user_id: i64,
-        elo: Glicko2Rating,
-        executor: impl Executor<'_, Database = Sqlite>,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query!(
-            "
-            UPDATE users
-            SET elo_rating = $1, elo_deviation = $2, elo_volatility = $3
-            WHERE id = $4
-            ",
-            elo.rating,
-            elo.deviation,
-            elo.volatility,
-            user_id
-        )
-        .execute(executor)
-        .await
-        .map(|_| ())
-        .map_err(Into::into)
-    }
-
     pub async fn add_email_verification(
         user_id: i64,
         email: &str,
@@ -322,7 +300,21 @@ impl User {
         executor: impl Executor<'_, Database = Sqlite>,
     ) -> Result<(), sqlx::Error> {
         self.elo = new_elo;
-        UserService::update_elo(self.id, new_elo, executor).await
+        sqlx::query!(
+            "
+            UPDATE users
+            SET elo_rating = $1, elo_deviation = $2, elo_volatility = $3
+            WHERE id = $4
+            ",
+            self.elo.rating,
+            self.elo.deviation,
+            self.elo.volatility,
+            self.id
+        )
+        .execute(executor)
+        .await
+        .map(|_| ())
+        .map_err(Into::into)
     }
 
     pub async fn attach_discord_id(
@@ -331,6 +323,27 @@ impl User {
         executor: impl Executor<'_, Database = Sqlite>,
     ) -> Result<(), sqlx::Error> {
         UserService::attach_discord_id(self, discord_id, executor).await
+    }
+
+    pub async fn update_username(
+        &mut self,
+        new_username: String,
+        executor: impl Executor<'_, Database = Sqlite>,
+    ) -> Result<(), sqlx::Error> {
+        self.username = new_username;
+        sqlx::query!(
+            "
+            UPDATE users
+            SET username = $1
+            WHERE id = $2
+            ",
+            self.username,
+            self.id
+        )
+        .execute(executor)
+        .await
+        .map(|_| ())
+        .map_err(Into::into)
     }
 }
 

@@ -10,9 +10,29 @@ This is the most cursed project idea I've had in a while.
 ## Platforms
 
 - [x] Discord (bot)
+  - [x] Challenge other discord users
+  - [ ] Challenge web users
+  - [x] Link to web profiles
+  - [x] Change username
+- [/] Web (chess-anywhere.wobbl.in)
+  - [/] REST Api
+    - [ ] Stream chess games
+    - [x] Play move
+    - [ ] Get game state
+    - [/] Store games in a database for future queries
+    - [ ] FEN/PGN support
+    - [ ] Change username
+  - [ ] CapnProto API
+    - [ ] Stream chess games
+    - [ ] Play move
+    - [ ] Get game state
+    - [ ] Store games in a database for future queries
+    - [ ] FEN/PGN support
+    - [ ] Change Username
+  - [ ] Challenge other web users
+  - [ ] Challenge discord users
 - [ ] Minecraft (possibly interact with <https://www.curseforge.com/minecraft/mc-mods/table-top-craft-fabric>)
 - [ ] Slack (bot)
-- [ ] Web (chess.wobbl.in)
 - [ ] Lichess (bot; requires timers to be implemented first. This could also be used to get the players initial ELO if it's the first game they've played)
 
 ## Resource list
@@ -28,10 +48,3 @@ This is the most cursed project idea I've had in a while.
   - [ ] <https://cheatsheetseries.owasp.org/cheatsheets/Multifactor_Authentication_Cheat_Sheet.html>
   - [x] <https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html>
     - [x] seems that <https://github.com/maxcountryman/tower-sessions> knows what they're doing
-
-- [ ] web API
-  - [ ] Stream chess games
-  - [x] Play move
-  - [ ] Get game state
-  - [/] Store games in a database for future queries
-  - [ ] FEN/PGN support

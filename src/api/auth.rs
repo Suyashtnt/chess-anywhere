@@ -93,7 +93,7 @@ impl std::error::Error for AuthError {}
 #[derive(Debug, Serialize, JsonSchema)]
 /// The response to an email request
 pub enum EmailResponse {
-    /// The email was sent
+    /// The email was sent if the email was valid
     EmailSent,
 }
 

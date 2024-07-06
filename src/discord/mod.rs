@@ -1,6 +1,6 @@
+mod account;
 pub mod board;
 pub mod error;
-mod link;
 mod move_piece;
 mod new_game;
 
@@ -47,7 +47,8 @@ impl DiscordBotService {
                     move_piece::r#move(),
                     new_game::new_game(),
                     register(),
-                    link::link(),
+                    account::link(),
+                    account::create_account(),
                 ],
                 on_error: |error| {
                     Box::pin(async move {

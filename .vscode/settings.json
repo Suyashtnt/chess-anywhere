@@ -2,7 +2,8 @@
     "conventionalCommits.scopes": [
         "backend",
         "discord",
-        "api"
+        "api",
+        "nix"
     ],
     "sqltools.connections": [
         {

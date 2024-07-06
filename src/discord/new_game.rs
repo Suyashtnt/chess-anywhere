@@ -16,6 +16,7 @@ use poise::{
     },
     CreateReply,
 };
+use shakmaty::Color;
 
 #[poise::command(
     slash_command,
@@ -197,9 +198,7 @@ async fn start_game_both_discord(
     };
 
     let backend = BACKEND_SERVICE.get().unwrap();
-    let res = backend.create_game(white, black).await;
-
-    match res {
+    match backend.create_game(white.clone(), black.clone()).await {
         Ok(()) => Ok(()),
         Err(err) => match err.current_context() {
             CreateGameError::PlayerInGame => {
@@ -214,6 +213,29 @@ async fn start_game_both_discord(
                     .attach(error_user)
                     .await
             }
+            CreateGameError::UsernameTaken(user) => {
+                let PlayerPlatform::Discord { user, .. } = (match user {
+                    Color::White => white,
+                    Color::Black => black,
+                }) else {
+                    unreachable!()
+                };
+
+                message
+                    .edit(
+                        &ctx.http(),
+                        EditMessage::default()
+                            .content(format!(
+                                "{}, your discord username ({}) is already taken! Use `/create_account` to manually create your account and choose a username.",
+                                user.mention(),
+                                user.name
+                            ))
+                            .components(vec![]),
+                    )
+                    .change_context_lazy(error)
+                    .attach(error_user)
+                    .await
+            }
             _ => return Err(err.change_context(error())),
         },
     }
@@ -221,7 +243,7 @@ async fn start_game_both_discord(
 
 #[poise::command(slash_command)]
 #[tracing::instrument]
-/// Challenge a user to a private game
+/// Challenge a user to a private game in their DMs
 pub async fn discord_dm(
     ctx: Context<'_>,
     #[description = "The user you want to play against"] other_user: User,
@@ -310,11 +332,51 @@ pub async fn discord_dm(
 
             let backend = BACKEND_SERVICE.get().unwrap();
 
-            backend
-                .create_game(white, black)
-                .change_context_lazy(error)
-                .attach_lazy(error_user)
+            match backend
+                .create_game(white.clone(), black.clone())
+                .attach_lazy(&error_user)
                 .await
+            {
+                Ok(()) => Ok(()),
+                Err(err) => match err.current_context() {
+                    CreateGameError::PlayerInGame => {
+                        message
+                            .edit(
+                                &ctx.http(),
+                                EditMessage::default()
+                                    .content("One of y'all are already in a game!")
+                                    .components(vec![]),
+                            )
+                            .change_context_lazy(error)
+                            .attach_lazy(error_user)
+                            .await
+                    }
+                    CreateGameError::UsernameTaken(user) => {
+                        let PlayerPlatform::Discord { user, .. } = (match user {
+                            Color::White => white,
+                            Color::Black => black,
+                        }) else {
+                            unreachable!()
+                        };
+
+                        message
+                            .edit(
+                                &ctx.http(),
+                                EditMessage::default()
+                                    .content(format!(
+                                        "{}, your discord username ({}) is already taken! Use `/create_account` to manually create your account and choose a username.",
+                                        user.mention(),
+                                        user.name
+                                    ))
+                                    .components(vec![]),
+                            )
+                            .change_context_lazy(error)
+                            .attach_lazy(error_user)
+                            .await
+                    }
+                    _ => return Err(err.change_context(error())),
+                },
+            }
         }
         Ok(None) => {
             message

@@ -61,7 +61,7 @@ pub async fn email(ctx: ApplicationContext<'_>) -> Result<(), CommandError> {
 
     let api_service = API_SERVICE.get().unwrap();
 
-    let player = Player::upsert(
+    let Some(player) = Player::upsert(
         crate::backend::players::PlayerPlatform::Discord {
             user: ctx.author().clone(),
             game_message: message.clone(),
@@ -70,7 +70,14 @@ pub async fn email(ctx: ApplicationContext<'_>) -> Result<(), CommandError> {
         &ctx.data.pool,
     )
     .change_context_lazy(&error)
-    .await?;
+    .await?
+    else {
+        message
+            .edit(ctx.http(), EditMessage::default().content("Your discord username is already taken! Use `/create_account` to manually create your account and choose a username."))
+            .change_context_lazy(&error)
+            .await?;
+        return Ok(());
+    };
 
     api_service
         .state

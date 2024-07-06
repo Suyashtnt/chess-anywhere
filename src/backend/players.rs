@@ -78,15 +78,25 @@ impl Player {
     /// Gets a user from the database based on their current platform,
     /// or creates them if they're not in the database
     /// using the provided closure to create the user
-    pub async fn upsert(platform: PlayerPlatform, pool: &SqlitePool) -> Result<Self, sqlx::Error> {
+    ///
+    /// Returns None if the username already exists and isn't logged in with the given platform
+    pub async fn upsert(
+        platform: PlayerPlatform,
+        pool: &SqlitePool,
+    ) -> Result<Option<Self>, sqlx::Error> {
         match Self::fetch(platform.clone(), pool).await? {
-            Some(user) => Ok(user),
+            Some(user) => Ok(Some(user)),
             None => Self::create(platform, pool).await,
         }
     }
 
     /// Creates a new user in the database
-    pub async fn create(platform: PlayerPlatform, pool: &SqlitePool) -> Result<Self, sqlx::Error> {
+    ///
+    /// Returns `None` if the username already exists
+    pub async fn create(
+        platform: PlayerPlatform,
+        pool: &SqlitePool,
+    ) -> Result<Option<Self>, sqlx::Error> {
         match platform {
             PlayerPlatform::Discord {
                 user: ref discord_user,
@@ -94,13 +104,20 @@ impl Player {
             } => {
                 let mut transaction = pool.begin().await?;
 
+                if UserService::fetch_user_by_username(&discord_user.name, &mut *transaction)
+                    .await
+                    .is_ok_and(|row| row.is_some())
+                {
+                    return Ok(None);
+                }
+
                 let user = UserService::create(&discord_user.name, &mut *transaction).await?;
                 user.attach_discord_id(discord_user.id, &mut *transaction)
                     .await?;
 
                 transaction.commit().await?;
 
-                Ok(Self { user, platform })
+                Ok(Some(Self { user, platform }))
             }
             // how the hell would one create the user by starting the game... and provide an arbitrary user_id?
             PlayerPlatform::WebApi { .. } => {

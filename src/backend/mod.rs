@@ -48,6 +48,7 @@ pub struct BackendService {
 pub enum CreateGameError {
     PlayerInGame,
     PlayerDoesNotExist,
+    UsernameTaken(Color),
     DatabaseError,
     DiscordError,
 }
@@ -59,6 +60,13 @@ impl fmt::Display for CreateGameError {
             Self::PlayerDoesNotExist => f.write_str("One of the players does not exist!"),
             Self::DatabaseError => f.write_str("Database error!"),
             Self::DiscordError => f.write_str("Discord error!"),
+            Self::UsernameTaken(color) => {
+                write!(
+                    f,
+                    "{}'s Username is already taken! You'll need to manually create an account.",
+                    color
+                )
+            }
         }
     }
 }
@@ -96,13 +104,19 @@ impl BackendService {
         white: PlayerPlatform,
         black: PlayerPlatform,
     ) -> Result<(), CreateGameError> {
-        let white = Player::upsert(white, &self.pool)
+        let Some(white) = Player::upsert(white, &self.pool)
             .change_context(CreateGameError::DatabaseError)
-            .await?;
+            .await?
+        else {
+            bail!(CreateGameError::UsernameTaken(Color::White))
+        };
 
-        let black = Player::upsert(black, &self.pool)
+        let Some(black) = Player::upsert(black, &self.pool)
             .change_context(CreateGameError::DatabaseError)
-            .await?;
+            .await?
+        else {
+            bail!(CreateGameError::UsernameTaken(Color::Black))
+        };
 
         let mut user_tuple = (white, black);
 
